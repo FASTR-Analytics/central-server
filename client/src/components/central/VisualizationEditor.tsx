@@ -1,35 +1,37 @@
 import {
   Button,
   ChartHolder,
-  Checkbox,
   HeadingBar,
   Input,
   Select,
   StateHolderWrapper,
-  TextArea,
   openAlert,
   openConfirm,
   timActionButton,
   timQuery,
 } from "panther";
-import { For, createEffect, createSignal, Match, Show, Switch } from "solid-js";
+import { Match, Show, Switch, createEffect, createMemo, createSignal } from "solid-js";
+import { createStore, unwrap } from "solid-js/store";
 import type {
   DisaggregationOption,
   PresentationObjectConfig,
-  PresentationOption,
-  ResultsValueForVisualization,
+  PresentationObjectDetail as PlatformPODetail,
+  ResultsValue,
+  ResultsValueInfoForPresentationObject,
 } from "platform-lib";
 import {
-  convertVisualizationType,
   getFetchConfigFromPresentationObjectConfig,
-  getNextAvailableDisaggregationDisplayOption,
   getStartingConfigForPresentationObject,
-  get_PRESENTATION_SELECT_OPTIONS,
   isDisaggregationOption,
   parsePresentationObjectConfig,
 } from "platform-lib";
-import { serverActions, type ProjectMetric, type PresentationObjectDetail } from "~/server_actions";
+import {
+  serverActions,
+  type ProjectMetric,
+  type PresentationObjectDetail as CentralPODetail,
+} from "~/server_actions";
 import { getFigureInputsFromPresentationObject } from "~/generate_visualization/get_figure_inputs_from_po";
+import { PresentationObjectEditorPanel } from "~/components/visualization/presentation_object_editor_panel";
 
 type Props = {
   projectId: string;
@@ -45,9 +47,10 @@ export function VisualizationEditor(p: Props) {
   );
 
   const poQuery = timQuery(
-    () => p.poId
-      ? serverActions.getPresentationObject({ projectId: p.projectId, id: p.poId })
-      : Promise.resolve({ success: false as const, err: "No PO" }),
+    () =>
+      p.poId
+        ? serverActions.getPresentationObject({ projectId: p.projectId, id: p.poId })
+        : Promise.resolve({ success: false as const, err: "No PO" }),
     "Loading...",
   );
 
@@ -64,7 +67,7 @@ export function VisualizationEditor(p: Props) {
             <Show
               when={p.poId !== null}
               fallback={
-                <_EditorInner
+                <_EditorSetup
                   projectId={p.projectId}
                   poId={null}
                   poDetail={null}
@@ -75,8 +78,8 @@ export function VisualizationEditor(p: Props) {
               }
             >
               <StateHolderWrapper state={poQuery.state()}>
-                {(poDetail: PresentationObjectDetail) => (
-                  <_EditorInner
+                {(poDetail: CentralPODetail) => (
+                  <_EditorSetup
                     projectId={p.projectId}
                     poId={p.poId!}
                     poDetail={poDetail}
@@ -94,123 +97,199 @@ export function VisualizationEditor(p: Props) {
   );
 }
 
-type InnerProps = {
+type SetupProps = {
   projectId: string;
   poId: string | null;
-  poDetail: PresentationObjectDetail | null;
+  poDetail: CentralPODetail | null;
   metrics: ProjectMetric[];
   onClose: () => void;
   onSaved: (newId?: string) => void;
 };
 
-function _EditorInner(p: InnerProps) {
-  const initialMetricId = p.poDetail?.metricId ?? "";
-  const initialLabel = p.poDetail?.label ?? "";
-  const initialConfig = p.poDetail?.config ?? null;
+function _EditorSetup(p: SetupProps) {
+  const [metricId, setMetricId] = createSignal(p.poDetail?.metricId ?? "");
 
-  const [metricId, setMetricId] = createSignal(initialMetricId);
-  const [label, setLabel] = createSignal(initialLabel);
-  const [config, setConfig] = createSignal<unknown>(initialConfig);
-  const [rawConfigText, setRawConfigText] = createSignal(
-    initialConfig ? JSON.stringify(initialConfig, null, 2) : "",
-  );
-
-  const selectedMetric = () => p.metrics.find((m) => m.id === metricId());
-
-  // Parsed config derived value
-  const parsedConfig = (): PresentationObjectConfig | null => {
-    const cfg = config();
-    if (!cfg) return null;
+  const initReadyConfig = (() => {
+    if (!p.poDetail) return null;
+    const m = p.metrics.find((m) => m.id === p.poDetail!.metricId);
+    if (!m) return null;
     try {
-      return parsePresentationObjectConfig(JSON.stringify(cfg));
+      const c = parsePresentationObjectConfig(JSON.stringify(p.poDetail.config));
+      return { m, c };
     } catch {
       return null;
     }
-  };
+  })();
 
-  // Auto-generate starting config when metric selected in create mode
+  const [readyConfig, setReadyConfig] = createSignal<{
+    m: ProjectMetric;
+    c: PresentationObjectConfig;
+  } | null>(initReadyConfig);
+
   createEffect(() => {
-    const mId = metricId();
     if (p.poId !== null) return;
-    if (config() !== null) return;
+    if (readyConfig() !== null) return;
+    const mId = metricId();
     const m = p.metrics.find((m) => m.id === mId);
     if (!m) return;
 
     const disOpts = (JSON.parse(m.requiredDisaggregationOptions ?? "[]") as string[])
       .filter(isDisaggregationOption)
       .map((d: DisaggregationOption) => ({ value: d, isRequired: true }));
-
     const periodCols = ["period_id", "quarter_id", "year"] as const;
-    const mostGranular = disOpts.find((d) => (periodCols as readonly string[]).includes(d.value))
-      ?.value as typeof periodCols[number] | undefined;
+    const mostGranular = disOpts.find((d) =>
+      (periodCols as readonly string[]).includes(d.value),
+    )?.value as (typeof periodCols)[number] | undefined;
 
     const fakeRv = {
       id: m.id,
       resultsObjectId: m.resultsObjectId,
       valueProps: JSON.parse(m.valueProps ?? "[]"),
-      valueFunc: "SUM",
+      valueFunc: m.valueFunc,
       label: m.label,
-      formatAs: m.formatAs as "percent" | "number",
+      formatAs: m.formatAs,
       valueLabelReplacements: undefined,
       disaggregationOptions: disOpts,
       mostGranularTimePeriodColumnInResultsFile: mostGranular,
     };
 
-    const startingConfig = getStartingConfigForPresentationObject(fakeRv as any, "chart", []);
-    setConfig(startingConfig);
+    try {
+      const startingConfig = getStartingConfigForPresentationObject(
+        fakeRv as any,
+        "chart",
+        [],
+      );
+      const c = parsePresentationObjectConfig(JSON.stringify(startingConfig));
+      setReadyConfig({ m, c });
+    } catch (e) {
+      console.error("Failed to generate starting config:", e);
+    }
   });
 
-  // Sync config → rawConfigText (for external changes: type selector, disagg toggle, auto-generate)
-  createEffect(() => {
-    const cfg = config();
-    setRawConfigText(cfg ? JSON.stringify(cfg, null, 2) : "");
-  });
+  return (
+    <div class="flex flex-1 flex-col overflow-hidden">
+      <Show when={!p.poId}>
+        <div class="flex-none border-b p-3">
+          <Select
+            label="Select metric"
+            value={metricId() || undefined}
+            options={p.metrics
+              .filter((m) => !m.hide)
+              .map((m) => ({
+                value: m.id,
+                label: m.label + (m.variantLabel ? ` — ${m.variantLabel}` : ""),
+              }))}
+            onChange={setMetricId}
+            placeholder="Select metric..."
+            fullWidth
+          />
+        </div>
+      </Show>
 
-  // Fetch results value info when metric changes
+      <Show when={readyConfig()} keyed>
+        {(ready) => (
+          <_EditorActive
+            projectId={p.projectId}
+            poId={p.poId}
+            metric={ready.m}
+            initialLabel={p.poDetail?.label ?? ""}
+            initialConfig={ready.c}
+            onClose={p.onClose}
+            onSaved={p.onSaved}
+          />
+        )}
+      </Show>
+    </div>
+  );
+}
+
+type ActiveProps = {
+  projectId: string;
+  poId: string | null;
+  metric: ProjectMetric;
+  initialLabel: string;
+  initialConfig: PresentationObjectConfig;
+  onClose: () => void;
+  onSaved: (newId?: string) => void;
+};
+
+function _EditorActive(p: ActiveProps) {
+  const [label, setLabel] = createSignal(p.initialLabel);
+  const [tempConfig, setTempConfig] = createStore<PresentationObjectConfig>(
+    structuredClone(p.initialConfig),
+  );
+
+  const poDetailForPanel: PlatformPODetail = (() => {
+    const disOpts = (JSON.parse(p.metric.requiredDisaggregationOptions ?? "[]") as string[])
+      .filter(isDisaggregationOption)
+      .map((d: DisaggregationOption) => ({ value: d, isRequired: true }));
+    const periodCols = ["period_id", "quarter_id", "year"] as const;
+    const mostGranular = disOpts.find((d) =>
+      (periodCols as readonly string[]).includes(d.value),
+    )?.value as (typeof periodCols)[number] | undefined;
+
+    const resultsValue: ResultsValue = {
+      id: p.metric.id,
+      resultsObjectId: p.metric.resultsObjectId,
+      valueProps: JSON.parse(p.metric.valueProps ?? "[]"),
+      valueFunc: p.metric.valueFunc as ResultsValue["valueFunc"],
+      label: p.metric.label,
+      variantLabel: p.metric.variantLabel ?? undefined,
+      formatAs: p.metric.formatAs as "percent" | "number",
+      disaggregationOptions: disOpts,
+      mostGranularTimePeriodColumnInResultsFile: mostGranular,
+    };
+
+    return {
+      id: p.poId ?? "new",
+      projectId: p.projectId,
+      lastUpdated: new Date().toISOString(),
+      label: p.initialLabel,
+      resultsValue,
+      config: p.initialConfig,
+      isDefault: false,
+      folderId: null,
+    };
+  })();
+
   const rvInfoQuery = timQuery(
-    () => {
-      const m = selectedMetric();
-      if (!m) return Promise.resolve({ success: true as const, data: null });
-      return serverActions.getResultsValueInfo({
+    () =>
+      serverActions.getResultsValueInfo({
         projectId: p.projectId,
-        metricId: m.id,
-        moduleLastRun: m.lastRunAt,
-      });
-    },
+        metricId: p.metric.id,
+        moduleLastRun: p.metric.lastRunAt,
+      }),
     "Loading metric info...",
   );
 
-  createEffect(() => {
-    metricId();
-    rvInfoQuery.fetch();
+  const dataFetchKey = createMemo(() => {
+    const d = tempConfig.d;
+    return JSON.stringify({
+      type: d.type,
+      disaggregateBy: d.disaggregateBy,
+      filterBy: d.filterBy,
+      valuesFilter: d.valuesFilter,
+      periodFilter: d.periodFilter,
+      includeNationalForAdminArea2: d.includeNationalForAdminArea2,
+      includeNationalPosition: d.includeNationalPosition,
+      selectedReplicantValue: d.selectedReplicantValue,
+    });
   });
 
-  // Fetch chart items when config + metric are ready
   const itemsQuery = timQuery(
     () => {
-      const m = selectedMetric();
-      const cfg = config();
-      if (!m || !cfg) return Promise.resolve({ success: true as const, data: null });
+      const m = p.metric;
+      const cfg = unwrap(tempConfig);
 
-      let parsed: PresentationObjectConfig;
-      try {
-        parsed = parsePresentationObjectConfig(JSON.stringify(cfg));
-      } catch {
-        return Promise.resolve({ success: true as const, data: null });
-      }
-
-      const resultsValue = {
-        valueProps: JSON.parse(m.valueProps ?? "[]"),
-        valueFunc: m.valueFunc,
-        formatAs: m.formatAs as "percent" | "number",
-      };
-
-      const fetchConfigResult = getFetchConfigFromPresentationObjectConfig(resultsValue as any, parsed);
+      const fetchConfigResult = getFetchConfigFromPresentationObjectConfig(
+        { valueProps: JSON.parse(m.valueProps ?? "[]"), valueFunc: m.valueFunc, formatAs: m.formatAs } as any,
+        cfg,
+      );
       if (!fetchConfigResult.success) return Promise.resolve({ success: true as const, data: null });
 
       const periodOpts = JSON.parse(m.requiredDisaggregationOptions ?? "[]");
-      const firstPeriodOption = periodOpts.find((d: string) =>
-        d === "period_id" || d === "year" || d === "quarter_id"
+      const firstPeriodOption = periodOpts.find(
+        (d: string) => d === "period_id" || d === "year" || d === "quarter_id",
       );
 
       return serverActions.getPresentationObjectItems({
@@ -224,102 +303,67 @@ function _EditorInner(p: InnerProps) {
     "Loading chart data...",
   );
 
+  let firstItemsFetch = true;
   createEffect(() => {
-    config();
+    dataFetchKey();
+    if (firstItemsFetch) {
+      firstItemsFetch = false;
+      return;
+    }
     itemsQuery.fetch();
   });
 
-  // Presentation type options for the current metric
-  const presentationTypeOptions = () => {
-    const m = selectedMetric();
-    if (!m) return get_PRESENTATION_SELECT_OPTIONS();
-    const disOpts = (JSON.parse(m.requiredDisaggregationOptions ?? "[]") as string[])
-      .filter(isDisaggregationOption)
-      .map((d: DisaggregationOption) => ({ value: d }));
-    return get_PRESENTATION_SELECT_OPTIONS(disOpts);
-  };
-
-  const handleTypeChange = (newType: string) => {
-    const pc = parsedConfig();
-    if (!pc) return;
-    const m = selectedMetric();
-    if (!m) return;
-    const disOpts = (JSON.parse(m.requiredDisaggregationOptions ?? "[]") as string[])
-      .filter(isDisaggregationOption)
-      .map((d: DisaggregationOption) => ({ value: d, isRequired: true }));
-    try {
-      const converted = convertVisualizationType(pc, newType as PresentationOption, disOpts);
-      setConfig(converted);
-    } catch {}
-  };
-
-  // Available disaggregation options from the selected metric
-  const availableDisaggOptions = (): DisaggregationOption[] => {
-    const m = selectedMetric();
-    if (!m) return [];
-    return (JSON.parse(m.requiredDisaggregationOptions ?? "[]") as string[])
-      .filter(isDisaggregationOption) as DisaggregationOption[];
-  };
-
-  const activeDisaggOptions = (): Set<DisaggregationOption> => {
-    const pc = parsedConfig();
-    if (!pc) return new Set();
-    return new Set(pc.d.disaggregateBy.map((d) => d.disOpt));
-  };
-
-  const handleDisaggToggle = (disOpt: DisaggregationOption, checked: boolean) => {
-    const pc = parsedConfig();
-    if (!pc) return;
-    const m = selectedMetric();
-    if (!m) return;
-    if (checked) {
-      const rv: ResultsValueForVisualization = {
-        formatAs: m.formatAs as "percent" | "number",
-        valueProps: JSON.parse(m.valueProps ?? "[]"),
-      };
-      const disDisplayOpt = getNextAvailableDisaggregationDisplayOption(
-        rv,
-        pc,
-        disOpt,
-        rv.valueProps,
-      );
-      setConfig({
-        ...pc,
-        d: { ...pc.d, disaggregateBy: [...pc.d.disaggregateBy, { disOpt, disDisplayOpt }] },
-      });
-    } else {
-      setConfig({
-        ...pc,
-        d: { ...pc.d, disaggregateBy: pc.d.disaggregateBy.filter((d) => d.disOpt !== disOpt) },
-      });
-    }
-  };
-
-  const handleApplyConfig = () => {
-    try {
-      const parsed = JSON.parse(rawConfigText());
-      setConfig(parsed);
-    } catch {}
+  const figureInputs = () => {
+    const s = itemsQuery.state();
+    if (s.status !== "ready" || !s.data) return null;
+    const ih = s.data;
+    if (!ih || (ih as any).status !== "ok") return null;
+    const cfg = unwrap(tempConfig);
+    return getFigureInputsFromPresentationObject(
+      poDetailForPanel.resultsValue as any,
+      ih as any,
+      cfg,
+    );
   };
 
   const [saveLoading, setSaveLoading] = createSignal(false);
 
   const handleSave = async () => {
     const lbl = label().trim();
-    const mId = metricId();
-    const cfg = config();
-    if (!lbl) { await openAlert({ title: "Error", text: "Label required", intent: "danger" }); return; }
-    if (!mId) { await openAlert({ title: "Error", text: "Select a metric", intent: "danger" }); return; }
+    const cfg = unwrap(tempConfig);
+    if (!lbl) {
+      await openAlert({ title: "Error", text: "Label required", intent: "danger" });
+      return;
+    }
     setSaveLoading(true);
     try {
       if (p.poId) {
-        await serverActions.updatePresentationObjectLabel({ projectId: p.projectId, id: p.poId, label: lbl });
-        const r = await serverActions.updatePresentationObjectConfig({ projectId: p.projectId, id: p.poId, config: cfg });
-        if (!r.success) { await openAlert({ title: "Error", text: r.err, intent: "danger" }); return; }
+        await serverActions.updatePresentationObjectLabel({
+          projectId: p.projectId,
+          id: p.poId,
+          label: lbl,
+        });
+        const r = await serverActions.updatePresentationObjectConfig({
+          projectId: p.projectId,
+          id: p.poId,
+          config: cfg,
+        });
+        if (!r.success) {
+          await openAlert({ title: "Error", text: r.err, intent: "danger" });
+          return;
+        }
         p.onSaved();
       } else {
-        const r = await serverActions.createPresentationObject({ projectId: p.projectId, metricId: mId, label: lbl, config: cfg ?? {} });
-        if (!r.success) { await openAlert({ title: "Error", text: r.err, intent: "danger" }); return; }
+        const r = await serverActions.createPresentationObject({
+          projectId: p.projectId,
+          metricId: p.metric.id,
+          label: lbl,
+          config: cfg,
+        });
+        if (!r.success) {
+          await openAlert({ title: "Error", text: r.err, intent: "danger" });
+          return;
+        }
         p.onSaved(r.data.id);
       }
     } finally {
@@ -332,112 +376,33 @@ function _EditorInner(p: InnerProps) {
       if (!p.poId) return { success: false as const, err: "No ID" };
       const confirmed = await openConfirm({ text: "Delete this visualization?" });
       if (!confirmed) return { success: false as const, err: "Cancelled" };
-      return serverActions.deletePresentationObject({ projectId: p.projectId, id: p.poId });
+      return serverActions.deletePresentationObject({
+        projectId: p.projectId,
+        id: p.poId,
+      });
     },
     p.onSaved,
   );
 
-  const figureInputs = () => {
-    const s = itemsQuery.state();
-    if (s.status !== "ready" || !s.data) return null;
-    const ih = s.data;
-    if (!ih || ih.status !== "ok") return null;
-    const m = selectedMetric();
-    if (!m) return null;
-    const cfg = config();
-    if (!cfg) return null;
-    let parsed: PresentationObjectConfig;
-    try {
-      parsed = parsePresentationObjectConfig(JSON.stringify(cfg));
-    } catch {
-      return null;
-    }
-    const resultsValue = {
-      valueProps: JSON.parse(m.valueProps ?? "[]"),
-      valueFunc: m.valueFunc,
-      formatAs: m.formatAs as "percent" | "number",
-    };
-    return getFigureInputsFromPresentationObject(resultsValue as any, ih as any, parsed);
-  };
-
   return (
-    <div class="flex flex-1 overflow-hidden">
-      {/* Left panel: controls */}
-      <div class="flex w-80 flex-shrink-0 flex-col gap-4 overflow-auto border-r border-base-300 p-4">
-        <Input
-          label="Label"
-          value={label()}
-          onChange={setLabel}
-          placeholder="Visualization label"
-          fullWidth
-        />
-
-        <Show when={!p.poId}>
-          <Select
-            label="Metric"
-            value={metricId() || undefined}
-            options={p.metrics.filter((m) => !m.hide).map((m) => ({
-              value: m.id,
-              label: m.label + (m.variantLabel ? ` — ${m.variantLabel}` : ""),
-            }))}
-            onChange={setMetricId}
-            placeholder="Select metric..."
+    <div class="flex flex-1 flex-col overflow-hidden">
+      <div class="flex flex-none items-center gap-2 border-b p-2">
+        <div class="min-w-0 flex-1">
+          <Input
+            label="Label"
+            value={label()}
+            onChange={setLabel}
+            placeholder="Visualization label"
             fullWidth
           />
-        </Show>
-
-        <Show when={p.poId && selectedMetric()}>
-          <div class="text-xs text-base-content/50">
-            Metric: {selectedMetric()!.label}
-            {selectedMetric()!.variantLabel ? ` — ${selectedMetric()!.variantLabel}` : ""}
-          </div>
-        </Show>
-
-        <Show when={parsedConfig()}>
-          <Select
-            label="Chart type"
-            value={parsedConfig()!.d.type}
-            options={presentationTypeOptions()}
-            onChange={handleTypeChange}
-            fullWidth
-          />
-
-          <Show when={availableDisaggOptions().length > 0}>
-            <div class="flex flex-col gap-2">
-              <div class="ui-label">Disaggregate by</div>
-              <For each={availableDisaggOptions()}>
-                {(disOpt) => (
-                  <Checkbox
-                    label={disOpt.replace(/_/g, " ")}
-                    checked={activeDisaggOptions().has(disOpt)}
-                    onChange={(checked) => handleDisaggToggle(disOpt, checked)}
-                  />
-                )}
-              </For>
-            </div>
-          </Show>
-
-          <div class="flex flex-col gap-1">
-            <TextArea
-              label="Config (JSON)"
-              value={rawConfigText()}
-              onChange={setRawConfigText}
-              rows={10}
-              mono
-              fullWidth
-            />
-            <Button intent="neutral" size="sm" onClick={handleApplyConfig}>
-              Apply config
-            </Button>
-          </div>
-        </Show>
-
-        <div class="flex flex-col gap-2 pt-2">
+        </div>
+        <div class="flex flex-none flex-col gap-1">
           <Button
             intent="primary"
             size="sm"
             state={{ status: saveLoading() ? "loading" : "ready" }}
             onClick={handleSave}
+            iconName="save"
           >
             Save
           </Button>
@@ -448,6 +413,7 @@ function _EditorInner(p: InnerProps) {
               outline
               state={deleteAction.state()}
               onClick={deleteAction.click}
+              iconName="trash"
             >
               Delete
             </Button>
@@ -455,37 +421,67 @@ function _EditorInner(p: InnerProps) {
         </div>
       </div>
 
-      {/* Right panel: chart preview */}
-      <div class="flex flex-1 flex-col overflow-auto p-4">
-        <div class="text-xs font-600 text-base-content/60 uppercase tracking-wider mb-3">Preview</div>
-        <Show
-          when={figureInputs()}
-          fallback={
-            <Switch>
-              <Match when={itemsQuery.state().status === "loading"}>
-                <div class="text-sm text-base-content/40">Loading data...</div>
-              </Match>
-              <Match when={!metricId()}>
-                <div class="text-sm text-base-content/40">Select a metric to preview</div>
-              </Match>
-              <Match when={!config()}>
-                <div class="text-sm text-base-content/40">Configure the visualization to preview</div>
-              </Match>
-              <Match when={true}>
-                <div class="text-sm text-base-content/40">No data available</div>
-              </Match>
-            </Switch>
-          }
-        >
-          {(fi) => (
-            <Show
-              when={fi().status === "ready"}
-              fallback={<div class="text-sm text-base-content/40">{fi().status === "error" ? (fi() as any).err : "No preview"}</div>}
+      <div class="flex flex-1 overflow-hidden">
+        <div class="h-full w-96 flex-none">
+          <Switch>
+            <Match when={rvInfoQuery.state().status === "loading"}>
+              <div class="ui-pad text-sm text-base-content/40">Loading...</div>
+            </Match>
+            <Match when={rvInfoQuery.state().status === "error"}>
+              <div class="ui-pad text-sm text-danger">
+                Error loading metric info
+              </div>
+            </Match>
+            <Match
+              when={
+                rvInfoQuery.state().status === "ready" &&
+                (rvInfoQuery.state() as any).data !== null
+              }
             >
-              <ChartHolder chartInputs={(fi() as any).data} height={500} />
-            </Show>
-          )}
-        </Show>
+              <PresentationObjectEditorPanel
+                projectId={p.projectId}
+                poDetail={poDetailForPanel}
+                resultsValueInfo={
+                  (rvInfoQuery.state() as any).data as ResultsValueInfoForPresentationObject
+                }
+                tempConfig={tempConfig}
+                setTempConfig={setTempConfig}
+              />
+            </Match>
+          </Switch>
+        </div>
+
+        <div class="flex flex-1 flex-col overflow-auto p-4">
+          <div class="mb-3 text-xs font-600 uppercase tracking-wider text-base-content/60">
+            Preview
+          </div>
+          <Show
+            when={figureInputs()}
+            fallback={
+              <Switch>
+                <Match when={itemsQuery.state().status === "loading"}>
+                  <div class="text-sm text-base-content/40">Loading data...</div>
+                </Match>
+                <Match when={true}>
+                  <div class="text-sm text-base-content/40">No data available</div>
+                </Match>
+              </Switch>
+            }
+          >
+            {(fi) => (
+              <Show
+                when={(fi() as any).status === "ready"}
+                fallback={
+                  <div class="text-sm text-base-content/40">
+                    {(fi() as any).status === "error" ? (fi() as any).err : "No preview"}
+                  </div>
+                }
+              >
+                <ChartHolder chartInputs={(fi() as any).data} height={500} />
+              </Show>
+            )}
+          </Show>
+        </div>
       </div>
     </div>
   );
