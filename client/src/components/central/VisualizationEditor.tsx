@@ -262,20 +262,6 @@ function _EditorActive(p: ActiveProps) {
     "Loading metric info...",
   );
 
-  const dataFetchKey = createMemo(() => {
-    const d = tempConfig.d;
-    return JSON.stringify({
-      type: d.type,
-      disaggregateBy: d.disaggregateBy,
-      filterBy: d.filterBy,
-      valuesFilter: d.valuesFilter,
-      periodFilter: d.periodFilter,
-      includeNationalForAdminArea2: d.includeNationalForAdminArea2,
-      includeNationalPosition: d.includeNationalPosition,
-      selectedReplicantValue: d.selectedReplicantValue,
-    });
-  });
-
   const itemsQuery = timQuery(
     () => {
       const m = p.metric;
@@ -305,26 +291,45 @@ function _EditorActive(p: ActiveProps) {
 
   let firstItemsFetch = true;
   createEffect(() => {
-    dataFetchKey();
-    if (firstItemsFetch) {
-      firstItemsFetch = false;
-      return;
+    // Explicitly read all data-config properties so SolidJS tracks each one.
+    // JSON.stringify on store proxies does not reliably trigger tracking.
+    for (const k in tempConfig.d) { (tempConfig.d as any)[k]; }
+    for (const dis of tempConfig.d.disaggregateBy) { dis.disOpt; dis.disDisplayOpt; }
+    for (const fil of tempConfig.d.filterBy ?? []) { fil.disOpt; fil.values.join(","); }
+    const _pf = tempConfig.d.periodFilter;
+    if (_pf) {
+      _pf.filterType;
+      if (_pf.filterType === "last_n_months") _pf.nMonths;
+      if (_pf.filterType === "last_n_calendar_years") _pf.nYears;
+      if (_pf.filterType === "last_n_calendar_quarters") _pf.nQuarters;
+      if (_pf.filterType === "custom" || _pf.filterType === "from_month") {
+        _pf.min; _pf.max;
+      }
     }
+
+    if (firstItemsFetch) { firstItemsFetch = false; return; }
     itemsQuery.fetch();
   });
 
-  const figureInputs = () => {
+  // Recompute figure inputs when items change (re-fetch) OR when style/text changes.
+  // Uses explicit property reads to register reactive tracking on store proxies.
+  const figureInputs = createMemo(() => {
     const s = itemsQuery.state();
     if (s.status !== "ready" || !s.data) return null;
     const ih = s.data;
     if (!ih || (ih as any).status !== "ok") return null;
+
+    // Track style and text changes so the preview rerenders without a re-fetch.
+    for (const k in tempConfig.s) { (tempConfig.s as any)[k]; }
+    for (const k in tempConfig.t) { (tempConfig.t as any)[k]; }
+
     const cfg = unwrap(tempConfig);
     return getFigureInputsFromPresentationObject(
       poDetailForPanel.resultsValue as any,
       ih as any,
       cfg,
     );
-  };
+  });
 
   const [saveLoading, setSaveLoading] = createSignal(false);
 

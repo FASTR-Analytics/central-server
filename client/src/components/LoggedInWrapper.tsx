@@ -32,9 +32,10 @@ export function LoggedInWrapper(p: Props) {
       setClerkUser(clerk.user);
 
       clerk.addListener(({ user }) => {
+        const wasSignedIn = !!clerkUser();
         setClerkUser(user);
-        if (user) {
-          globalUserQuery.silentFetch();
+        if (user && !wasSignedIn) {
+          globalUserQuery.fetch();
         }
       });
 
