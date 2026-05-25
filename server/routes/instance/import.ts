@@ -81,6 +81,9 @@ export async function doImport(
         ? `CREATE TABLE IF NOT EXISTS ${tableName} (source_server_id TEXT NOT NULL, ${columnsSql})`
         : `CREATE TABLE IF NOT EXISTS ${tableName} (source_server_id TEXT NOT NULL)`;
       await projectDb.unsafe(createSql);
+      for (const colName of Object.keys(colDefs)) {
+        await projectDb.unsafe(`ALTER TABLE ${tableName} ALTER COLUMN "${colName}" DROP NOT NULL`);
+      }
 
       await projectDb.unsafe(`DELETE FROM ${tableName} WHERE source_server_id = $1`, [sourceInstanceId]);
 
