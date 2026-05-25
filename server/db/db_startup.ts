@@ -9,7 +9,23 @@ const projectDbSql = await Deno.readTextFile(
   new URL("./project/_project_database.sql", import.meta.url).pathname,
 );
 
+async function waitForPostgres(): Promise<void> {
+  const postgresDb = getPgConnectionFromCacheOrNew("postgres", "READ_AND_WRITE");
+  for (let i = 0; i < 30; i++) {
+    try {
+      await postgresDb`SELECT 1`;
+      return;
+    } catch {
+      console.log(`Waiting for Postgres... (${i + 1}/30)`);
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  }
+  throw new Error("Postgres did not become ready in time");
+}
+
 export async function dbStartUp(): Promise<void> {
+  await waitForPostgres();
+
   const postgresDb = getPgConnectionFromCacheOrNew("postgres", "READ_AND_WRITE");
   const existing = await postgresDb<
     object[]
