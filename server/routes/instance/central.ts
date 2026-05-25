@@ -7,6 +7,15 @@ type Env = { Variables: { globalUser: GlobalUser } };
 
 export const routesCentral = new Hono<Env>();
 
+routesCentral.get("/servers.json", async (c) => {
+  try {
+    const content = await Deno.readTextFile("/app/servers.json");
+    return c.json(JSON.parse(content));
+  } catch {
+    return c.json([]);
+  }
+});
+
 routesCentral.get("/central_reporting_projects/:sourceServerId", requireHUser(), async (c) => {
   const sourceServerId = c.req.param("sourceServerId");
   const authHeader = c.req.header("Authorization");

@@ -42,6 +42,13 @@ export async function dbStartUp(): Promise<void> {
 
   const projects = await mainDb<{ id: string }[]>`SELECT id FROM projects`;
   for (const project of projects) {
+    const existingProjectDb = await postgresDb<
+      object[]
+    >`SELECT datname FROM pg_catalog.pg_database WHERE datname = ${project.id}`;
+    if (existingProjectDb.length === 0) {
+      await postgresDb.unsafe(`CREATE DATABASE "${project.id.replace(/"/g, "")}"`);
+      console.log(`✓ Created project database: ${project.id}`);
+    }
     const projectDb = getPgConnectionFromCacheOrNew(project.id, "READ_AND_WRITE");
     await initProjectDb(projectDb);
     console.log(`✓ Project database ready: ${project.id}`);
