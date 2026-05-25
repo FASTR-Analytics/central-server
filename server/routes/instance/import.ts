@@ -76,7 +76,7 @@ export async function doImport(
       `;
 
       const colDefs: Record<string, string> = ro.columnDefinitions ? JSON.parse(ro.columnDefinitions) : {};
-      const columnsSql = Object.entries(colDefs).map(([name, typedef]) => `${name} ${typedef}`).join(", ");
+      const columnsSql = Object.entries(colDefs).map(([name, typedef]) => `${name} ${typedef.replace(/\s+NOT NULL/gi, "")}`).join(", ");
       const createSql = columnsSql
         ? `CREATE TABLE IF NOT EXISTS ${tableName} (source_server_id TEXT NOT NULL, ${columnsSql})`
         : `CREATE TABLE IF NOT EXISTS ${tableName} (source_server_id TEXT NOT NULL)`;
