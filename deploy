@@ -1,0 +1,232 @@
+#!/bin/bash
+
+set -e
+
+START_TIME=$(date +%s)
+ORIGINAL_DIR=$(pwd)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CLIENT_DIR="$SCRIPT_DIR/client"
+SERVER_DIR="$SCRIPT_DIR"
+
+if [ ! -f VERSION ]; then
+    echo "ERROR: VERSION file not found!"
+    exit 1
+fi
+
+ORIGINAL_VERSION=$(cat VERSION)
+echo "Current version: $ORIGINAL_VERSION"
+
+echo "Is this an ad-hoc/testing deploy? (y/n)"
+read -r ADHOC_DEPLOY
+
+if [ "$ADHOC_DEPLOY" = "y" ] || [ "$ADHOC_DEPLOY" = "Y" ]; then
+    ADHOC_MODE=true
+    echo "Enter ad-hoc tag name (e.g., test-feature-x, debug-2024-01-28):"
+    read -r ADHOC_TAG
+    if [ -z "$ADHOC_TAG" ]; then
+        echo "ERROR: Ad-hoc tag cannot be empty"
+        exit 1
+    fi
+    VERSION="$ADHOC_TAG"
+    echo "Ad-hoc version: $VERSION"
+else
+    ADHOC_MODE=false
+fi
+
+cleanup() {
+    echo "ERROR: Deployment failed! Restoring original version..."
+    echo "$ORIGINAL_VERSION" > VERSION
+
+    if [ -d "$SERVER_DIR/client_dist.backup" ]; then
+        echo "Restoring client_dist backup..."
+        rm -rf "$SERVER_DIR/client_dist"
+        mv "$SERVER_DIR/client_dist.backup" "$SERVER_DIR/client_dist"
+    fi
+
+    cd "$ORIGINAL_DIR"
+    exit 1
+}
+
+trap cleanup ERR
+
+echo "Running typecheck..."
+if ! deno task typecheck; then
+    echo "ERROR: Typecheck failed!"
+    exit 1
+fi
+
+echo "Checking prerequisites..."
+command -v npm >/dev/null 2>&1 || { echo "ERROR: npm not found!"; exit 1; }
+command -v docker >/dev/null 2>&1 || { echo "ERROR: docker not found!"; exit 1; }
+command -v git >/dev/null 2>&1 || { echo "ERROR: git not found!"; exit 1; }
+
+if ! docker info >/dev/null 2>&1; then
+    echo "ERROR: Docker is not running!"
+    exit 1
+fi
+
+if ! docker info 2>/dev/null | grep -q "Username:"; then
+    echo "WARNING: You may not be logged into Docker Hub. Run 'docker login' if needed."
+fi
+
+if [ "$ADHOC_MODE" = "false" ]; then
+    MAJOR=$(echo $ORIGINAL_VERSION | cut -d. -f1)
+    MINOR=$(echo $ORIGINAL_VERSION | cut -d. -f2)
+    PATCH=$(echo $ORIGINAL_VERSION | cut -d. -f3)
+
+    echo "Do you want to bump the minor version $ORIGINAL_VERSION → $MAJOR.$((MINOR + 1)).0? (y/n)"
+    read -r BUMP_MINOR
+
+    if [ "$BUMP_MINOR" = "y" ] || [ "$BUMP_MINOR" = "Y" ]; then
+        MINOR=$((MINOR + 1))
+        PATCH=0
+    else
+        echo "Do you want to bump the patch version $ORIGINAL_VERSION → $MAJOR.$MINOR.$((PATCH + 1))? (y/n)"
+        read -r BUMP_PATCH
+
+        if [ "$BUMP_PATCH" = "y" ] || [ "$BUMP_PATCH" = "Y" ]; then
+            PATCH=$((PATCH + 1))
+        else
+            echo "Keeping current version: $ORIGINAL_VERSION"
+        fi
+    fi
+
+    NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+    echo "$NEW_VERSION" > VERSION
+    echo "Version bumped to: $NEW_VERSION"
+    VERSION=$NEW_VERSION
+fi
+
+if [ ! -d "$CLIENT_DIR" ]; then
+    echo "ERROR: Client directory not found: $CLIENT_DIR"
+    exit 1
+fi
+
+echo "Building client HTML..."
+cd "$CLIENT_DIR"
+
+if ! npm run build; then
+    echo "ERROR: Client build failed!"
+    exit 1
+fi
+
+if [ ! -d "$CLIENT_DIR/dist" ]; then
+    echo "ERROR: Client build output not found at $CLIENT_DIR/dist"
+    exit 1
+fi
+
+if [ ! "$(ls -A "$CLIENT_DIR/dist")" ]; then
+    echo "ERROR: Client build output directory is empty!"
+    exit 1
+fi
+
+cd "$SERVER_DIR"
+
+if [ -d "$SERVER_DIR/client_dist" ]; then
+    echo "Backing up existing client_dist directory..."
+    rm -rf "$SERVER_DIR/client_dist.backup"
+    cp -r "$SERVER_DIR/client_dist" "$SERVER_DIR/client_dist.backup"
+fi
+
+echo "Copying client build to server..."
+rm -rf "$SERVER_DIR/client_dist"
+cp -r "$CLIENT_DIR/dist" "$SERVER_DIR/client_dist"
+
+echo "Client build completed successfully"
+
+echo "Building Docker image with version: $VERSION"
+
+if ! docker build --platform linux/amd64 \
+    -t timroberton/comb:wb-fastr-central-v$VERSION \
+    .; then
+    echo "ERROR: Docker build failed!"
+    exit 1
+fi
+
+echo "Docker build completed successfully"
+echo "Pushing versioned tag to Docker Hub..."
+
+if ! docker push "timroberton/comb:wb-fastr-central-v$VERSION"; then
+    echo "ERROR: Failed to push timroberton/comb:wb-fastr-central-v$VERSION"
+    exit 1
+fi
+
+echo "Docker image pushed successfully"
+
+echo "Committing changes to git..."
+today=`date +%Y_%m_%d_%H_%M_%S`
+
+if ! git add .; then
+    echo "ERROR: Git add failed!"
+    exit 1
+fi
+
+if [ "$ADHOC_MODE" = "true" ]; then
+    COMMIT_MSG="Ad-hoc deploy: $VERSION at $today"
+else
+    COMMIT_MSG="Deploy version $VERSION at $today"
+fi
+
+if ! git commit -m "$COMMIT_MSG" --allow-empty; then
+    echo "ERROR: Git commit failed!"
+    exit 1
+fi
+
+if [ "$ADHOC_MODE" = "false" ]; then
+    git fetch origin main
+    LOCAL=$(git rev-parse HEAD)
+    REMOTE=$(git rev-parse origin/main)
+
+    if [ "$LOCAL" != "$REMOTE" ]; then
+        echo "Remote has commits not yet local. Rebasing..."
+        git log "$LOCAL..$REMOTE" --oneline
+        if ! git pull --rebase; then
+            echo "ERROR: Rebase failed!"
+            exit 1
+        fi
+    fi
+fi
+
+if ! git push; then
+    echo "ERROR: Git push failed!"
+    exit 1
+fi
+
+trap - ERR
+if [ -d "$SERVER_DIR/client_dist.backup" ]; then
+    echo "Removing client_dist backup (deployment successful)..."
+    rm -rf "$SERVER_DIR/client_dist.backup"
+fi
+
+END_TIME=$(date +%s)
+DURATION=$((END_TIME - START_TIME))
+MINUTES=$((DURATION / 60))
+SECONDS=$((DURATION % 60))
+
+echo ""
+echo -e "\033[92m"
+echo "╔══════════════════════════════════════════════════════════════════════╗"
+echo "║                                                                      ║"
+if [ "$ADHOC_MODE" = "true" ]; then
+    echo "║                   AD-HOC DEPLOYMENT SUCCESSFUL!                      ║"
+else
+    echo "║                      DEPLOYMENT SUCCESSFUL!                         ║"
+fi
+echo "║                                                                      ║"
+echo "╠══════════════════════════════════════════════════════════════════════╣"
+printf "║  Version:        %-51s ║\n" "$VERSION"
+printf "║  Docker Image:   %-51s ║\n" "timroberton/comb:wb-fastr-central-v$VERSION"
+echo "║                                                                      ║"
+echo "║  Operations Completed:                                               ║"
+printf "║    - Version bumped from %-43s ║\n" "$ORIGINAL_VERSION to $VERSION"
+echo "║    - Client built successfully                                       ║"
+echo "║    - Docker image built successfully                                 ║"
+echo "║    - Docker image pushed to Docker Hub                               ║"
+echo "║    - Changes committed to Git                                        ║"
+echo "║    - Changes pushed to remote repository                             ║"
+echo "║                                                                      ║"
+printf "║  Duration: %-57s ║\n" "$MINUTES minutes $SECONDS seconds"
+echo "╚══════════════════════════════════════════════════════════════════════╝"
+echo -e "\033[0m"
+echo ""
+cd "$ORIGINAL_DIR"

@@ -1,0 +1,38 @@
+{
+  "nodeModulesDir": "auto",
+  "fmt": {
+    "exclude": ["client/"]
+  },
+  "lint": {
+    "exclude": ["client/"]
+  },
+  "test": {
+    "exclude": ["client/"]
+  },
+  "imports": {
+    "lib": "./lib/mod.ts",
+    "platform-lib": "../platform/lib/mod.ts",
+    "@clerk/backend": "npm:@clerk/backend@^1.25.2",
+    "@hono/clerk-auth": "npm:@hono/clerk-auth@^2.0.0",
+    "@std/path": "jsr:@std/path@^1.0.0",
+    "@timroberton/panther": "../platform/panther/mod.deno.ts",
+    "hono": "npm:hono@4.11.3",
+    "nanoid": "npm:nanoid@^5.0.0",
+    "postgres": "npm:postgres@^3.4.5",
+    "zod": "npm:zod@^3.22.4"
+  },
+  "compilerOptions": {
+    "jsx": "precompile",
+    "jsxImportSource": "hono/jsx",
+    "lib": ["esnext", "dom", "dom.iterable", "deno.ns"]
+  },
+  "tasks": {
+    "dev": "deno run --allow-all --env-file --unstable-broadcast-channel main.ts",
+    "build:client": "cd client && npm run build",
+    "typecheck": "deno check main.ts && echo '✓ Server typecheck passed' && sh -c 'cd client && npm run typecheck' && echo '✓ Client typecheck passed'",
+    "check": "deno check main.ts",
+    "start": "deno run --allow-all --env-file main.ts",
+    "lint": "deno lint",
+    "fmt": "deno fmt"
+  }
+}

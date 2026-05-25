@@ -1,0 +1,23 @@
+{
+  "name": "wb-fastr-central-client",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit --skipLibCheck"
+  },
+  "dependencies": {
+    "@clerk/clerk-js": "^5.56.0",
+    "@solidjs/router": "^0.15.0",
+    "@tailwindcss/vite": "^4.1.12",
+    "solid-js": "^1.9.10",
+    "tailwindcss": "^4.1.12"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "vite": "^6.0.11",
+    "vite-plugin-solid": "^2.10.2",
+    "vite-tsconfig-paths": "^5.1.0"
+  }
+}

@@ -1,0 +1,85 @@
+@import "tailwindcss";
+@source "../../../platform/panther";
+
+@import "../../../platform/panther/_303_components/_fixed.css";
+
+@theme {
+  --font-*: initial;
+  --font-sans: "International Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: Roboto Mono;
+
+  --font-weight-*: initial;
+  --font-weight-400: 400;
+  --font-weight-700: 700;
+  --font-weight-800: 800;
+
+  --color-transparent: transparent;
+  --color-black: #000716;
+  --color-white: #ffffff;
+
+  --color-base-100: #ffffff;
+  --color-base-200: #f2f2f2;
+  --color-base-300: #cacaca;
+  --color-base-content: #2a2a2a;
+
+  --color-primary: #0e706c;
+  --color-primary-content: #ffffff;
+
+  --color-neutral: rgb(161, 161, 161);
+  --color-neutral-content: #ffffff;
+
+  --color-success: #009f70;
+  --color-success-content: #ffffff;
+
+  --color-warning: #d97706;
+  --color-warning-content: #ffffff;
+
+  --color-danger: #f04d44;
+  --color-danger-content: #ffffff;
+
+  --radius: 4px;
+  --radius-full: 9999px;
+}
+
+@layer base {
+  @font-face {
+    font-family: "International Inter";
+    src: url("/fonts/InternationalInter-Regular.woff2") format("woff2");
+    font-weight: 400;
+    font-style: normal;
+    font-display: block;
+  }
+
+  @font-face {
+    font-family: "International Inter";
+    src: url("/fonts/InternationalInter-Bold.woff2") format("woff2");
+    font-weight: 700;
+    font-style: normal;
+    font-display: block;
+  }
+
+  @font-face {
+    font-family: "International Inter";
+    src: url("/fonts/InternationalInter-ExtraBold.woff2") format("woff2");
+    font-weight: 800;
+    font-style: normal;
+    font-display: block;
+  }
+
+  @font-face {
+    font-family: "Roboto Mono";
+    src: url("/fonts/RobotoMono-Regular.woff2") format("woff2");
+    font-weight: 400;
+    font-style: normal;
+    font-display: block;
+  }
+
+  html,
+  body,
+  #app {
+    @apply bg-base-100 text-base-content m-0 h-full w-full p-0 font-sans;
+    overscroll-behavior-y: none;
+    overscroll-behavior-x: none;
+    font-variant-numeric: tabular-nums;
+  }
+}

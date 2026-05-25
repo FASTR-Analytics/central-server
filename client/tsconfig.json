@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
+    "allowJs": true,
+    "noEmit": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["vite/client"],
+    "isolatedModules": true,
+    "baseUrl": ".",
+    "paths": {
+      "~/*": ["./src/*"],
+      "panther": ["../../platform/panther/mod.ui.ts"],
+      "@timroberton/panther": ["../../platform/panther/mod.ui.ts"],
+      "lib": ["../lib/mod.ts"],
+      "platform-lib": ["../../platform/lib/mod.ts"],
+      "solid-js": ["./node_modules/solid-js"],
+      "solid-js/*": ["./node_modules/solid-js/*"],
+      "@solidjs/router": ["./node_modules/@solidjs/router"]
+    }
+  },
+  "include": ["src"],
+  "exclude": ["node_modules"]
+}
