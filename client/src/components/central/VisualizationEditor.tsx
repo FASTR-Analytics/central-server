@@ -46,7 +46,7 @@ export function VisualizationEditor(p: Props) {
   const poQuery = timQuery(
     () => p.poId
       ? serverActions.getPresentationObject({ projectId: p.projectId, id: p.poId })
-      : Promise.resolve({ success: true as const, data: null }),
+      : Promise.resolve({ success: false as const, err: "No PO" }),
     "Loading...",
   );
 
@@ -60,18 +60,32 @@ export function VisualizationEditor(p: Props) {
       <div class="flex flex-1 overflow-hidden">
         <StateHolderWrapper state={metricsQuery.state()}>
           {(metrics: ProjectMetric[]) => (
-            <StateHolderWrapper state={poQuery.state()}>
-              {(poDetail: PresentationObjectDetail | null) => (
+            <Show
+              when={p.poId !== null}
+              fallback={
                 <_EditorInner
                   projectId={p.projectId}
-                  poId={p.poId}
-                  poDetail={poDetail}
+                  poId={null}
+                  poDetail={null}
                   metrics={metrics}
                   onClose={p.onClose}
                   onSaved={p.onSaved}
                 />
-              )}
-            </StateHolderWrapper>
+              }
+            >
+              <StateHolderWrapper state={poQuery.state()}>
+                {(poDetail: PresentationObjectDetail) => (
+                  <_EditorInner
+                    projectId={p.projectId}
+                    poId={p.poId!}
+                    poDetail={poDetail}
+                    metrics={metrics}
+                    onClose={p.onClose}
+                    onSaved={p.onSaved}
+                  />
+                )}
+              </StateHolderWrapper>
+            </Show>
           )}
         </StateHolderWrapper>
       </div>
