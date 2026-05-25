@@ -7,6 +7,7 @@ import {
   Select,
   StateHolderWrapper,
   TextArea,
+  openAlert,
   openConfirm,
   timActionButton,
   timQuery,
@@ -34,7 +35,7 @@ type Props = {
   projectId: string;
   poId: string | null;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (newId?: string) => void;
 };
 
 export function VisualizationEditor(p: Props) {
@@ -99,7 +100,7 @@ type InnerProps = {
   poDetail: PresentationObjectDetail | null;
   metrics: ProjectMetric[];
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (newId?: string) => void;
 };
 
 function _EditorInner(p: InnerProps) {
@@ -300,21 +301,30 @@ function _EditorInner(p: InnerProps) {
     } catch {}
   };
 
-  const saveAction = timActionButton(
-    async () => {
-      const lbl = label().trim();
-      const mId = metricId();
-      const cfg = config();
-      if (!lbl) return { success: false as const, err: "Label required" };
-      if (!mId) return { success: false as const, err: "Select a metric" };
+  const [saveLoading, setSaveLoading] = createSignal(false);
+
+  const handleSave = async () => {
+    const lbl = label().trim();
+    const mId = metricId();
+    const cfg = config();
+    if (!lbl) { await openAlert({ title: "Error", text: "Label required", intent: "danger" }); return; }
+    if (!mId) { await openAlert({ title: "Error", text: "Select a metric", intent: "danger" }); return; }
+    setSaveLoading(true);
+    try {
       if (p.poId) {
         await serverActions.updatePresentationObjectLabel({ projectId: p.projectId, id: p.poId, label: lbl });
-        return serverActions.updatePresentationObjectConfig({ projectId: p.projectId, id: p.poId, config: cfg });
+        const r = await serverActions.updatePresentationObjectConfig({ projectId: p.projectId, id: p.poId, config: cfg });
+        if (!r.success) { await openAlert({ title: "Error", text: r.err, intent: "danger" }); return; }
+        p.onSaved();
+      } else {
+        const r = await serverActions.createPresentationObject({ projectId: p.projectId, metricId: mId, label: lbl, config: cfg ?? {} });
+        if (!r.success) { await openAlert({ title: "Error", text: r.err, intent: "danger" }); return; }
+        p.onSaved(r.data.id);
       }
-      return serverActions.createPresentationObject({ projectId: p.projectId, metricId: mId, label: lbl, config: cfg ?? {} });
-    },
-    p.onSaved,
-  );
+    } finally {
+      setSaveLoading(false);
+    }
+  };
 
   const deleteAction = timActionButton(
     async () => {
@@ -424,8 +434,8 @@ function _EditorInner(p: InnerProps) {
           <Button
             intent="primary"
             size="sm"
-            state={saveAction.state()}
-            onClick={saveAction.click}
+            state={{ status: saveLoading() ? "loading" : "ready" }}
+            onClick={handleSave}
           >
             Save
           </Button>

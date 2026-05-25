@@ -158,7 +158,7 @@ export function ProjectDetail(p: Props) {
                     projectId={p.projectId}
                     poId={editingPoId()!}
                     onClose={() => setEditingPoId(undefined)}
-                    onSaved={() => setEditingPoId(undefined)}
+                    onSaved={(newId) => setEditingPoId(newId ?? undefined)}
                   />
                 </Match>
                 <Match when={true}>
