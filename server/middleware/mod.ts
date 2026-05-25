@@ -13,3 +13,4 @@ export const corsMiddleware = cors({
 });
 
 export { requireAuth, requireHUser } from "./auth.ts";
+export { setupStaticServing } from "./static.ts";
