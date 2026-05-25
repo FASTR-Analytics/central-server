@@ -172,10 +172,12 @@ if ! git commit -m "$COMMIT_MSG" --allow-empty; then
     exit 1
 fi
 
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
 if [ "$ADHOC_MODE" = "false" ]; then
-    if git fetch origin main 2>/dev/null; then
+    if git fetch origin "$CURRENT_BRANCH" 2>/dev/null; then
         LOCAL=$(git rev-parse HEAD)
-        REMOTE=$(git rev-parse origin/main)
+        REMOTE=$(git rev-parse "origin/$CURRENT_BRANCH")
 
         if [ "$LOCAL" != "$REMOTE" ]; then
             echo "Remote has commits not yet local. Rebasing..."
@@ -186,11 +188,11 @@ if [ "$ADHOC_MODE" = "false" ]; then
             fi
         fi
     else
-        echo "No remote main branch yet — skipping rebase check (first deploy)."
+        echo "No remote branch yet — skipping rebase check (first deploy)."
     fi
 fi
 
-if ! git push -u origin main; then
+if ! git push -u origin "$CURRENT_BRANCH"; then
     echo "ERROR: Git push failed!"
     exit 1
 fi
