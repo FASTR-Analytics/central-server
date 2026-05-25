@@ -50,7 +50,8 @@ routesCentral.post("/import_from_source", requireHUser(), async (c) => {
       const text = await exportResponse.text();
       return c.json({ success: false, err: `Export failed (${exportResponse.status}): ${text}` }, 502);
     }
-    exportPayload = await exportResponse.json();
+    const exportJson = await exportResponse.json();
+    exportPayload = exportJson.data ?? exportJson;
   } catch (error) {
     return c.json({ success: false, err: `Failed to reach ${sourceServerId}: ${String(error)}` }, 502);
   }
