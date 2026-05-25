@@ -199,8 +199,9 @@ function _EditorInner(p: InnerProps) {
         return Promise.resolve({ success: true as const, data: null });
       }
 
-      const resultsValue: ResultsValueForVisualization = {
+      const resultsValue = {
         valueProps: JSON.parse(m.valueProps ?? "[]"),
+        valueFunc: m.valueFunc,
         formatAs: m.formatAs as "percent" | "number",
       };
 
@@ -351,8 +352,9 @@ function _EditorInner(p: InnerProps) {
     } catch {
       return null;
     }
-    const resultsValue: ResultsValueForVisualization = {
+    const resultsValue = {
       valueProps: JSON.parse(m.valueProps ?? "[]"),
+      valueFunc: m.valueFunc,
       formatAs: m.formatAs as "percent" | "number",
     };
     return getFigureInputsFromPresentationObject(resultsValue as any, ih as any, parsed);
