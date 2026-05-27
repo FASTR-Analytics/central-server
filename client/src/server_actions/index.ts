@@ -252,4 +252,16 @@ export const serverActions = {
       `/projects/${args.projectId}/users/${encodeURIComponent(args.email)}`,
       { method: "DELETE" },
     ),
+
+  getProjectUserPermissions: (args: { projectId: string; email: string }) =>
+    apiFetch<ProjectUserPermissions>(
+      `/projects/${args.projectId}/users/${encodeURIComponent(args.email)}`,
+    ),
+
+  updateUserInstancePermissions: (args: { email: string; canConfigureUsers: boolean; canCreateProjects: boolean }) =>
+    apiFetch<Record<string, never>>(`/users/${encodeURIComponent(args.email)}/permissions`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ canConfigureUsers: args.canConfigureUsers, canCreateProjects: args.canCreateProjects }),
+    }),
 };

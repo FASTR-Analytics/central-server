@@ -48,3 +48,18 @@ routesUsers.put("/users/:email/admin", requireAdmin(), async (c) => {
   await mainDb`UPDATE users SET is_admin = ${isAdmin} WHERE email = ${email}`;
   return c.json({ success: true });
 });
+
+routesUsers.put("/users/:email/permissions", requireAdmin(), async (c) => {
+  const email = c.req.param("email");
+  const { canConfigureUsers, canCreateProjects } = await c.req.json<{
+    canConfigureUsers: boolean;
+    canCreateProjects: boolean;
+  }>();
+  const mainDb = getPgConnectionFromCacheOrNew("main", "READ_AND_WRITE");
+  await mainDb`
+    UPDATE users
+    SET can_configure_users = ${canConfigureUsers}, can_create_projects = ${canCreateProjects}
+    WHERE email = ${email}
+  `;
+  return c.json({ success: true });
+});

@@ -279,6 +279,19 @@ routesProjects.put("/projects/:id/users/:email", requireAuth(), async (c) => {
   return c.json({ success: true });
 });
 
+// Get a specific user's permissions on a project (requires can_configure_users or self)
+routesProjects.get("/projects/:id/users/:email", requireAuth(), async (c) => {
+  const projectId = c.req.param("id");
+  const targetEmail = c.req.param("email");
+  const user = c.get("globalUser");
+  const perms = await getProjectPermissions(user.email, projectId, user.isAdmin);
+  if (!perms.can_configure_users && user.email !== targetEmail) {
+    return c.json({ success: false, err: "Not authorized" }, 403);
+  }
+  const targetPerms = await getProjectPermissions(targetEmail, projectId, false);
+  return c.json({ success: true, data: targetPerms });
+});
+
 // Remove user from project (requires can_configure_users)
 routesProjects.delete("/projects/:id/users/:email", requireAuth(), async (c) => {
   const projectId = c.req.param("id");
