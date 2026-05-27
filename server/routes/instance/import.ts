@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { GlobalUser, CentralExportPayload } from "lib";
-import { getPgConnectionFromCacheOrNew, getResultsObjectTableName, type DBProject } from "../../db/mod.ts";
+import { getPgConnectionFromCacheOrNew, getResultsObjectTableName, initProjectDb, type DBProject } from "../../db/mod.ts";
 import { requireHUser } from "../../middleware/auth.ts";
 
 type Env = { Variables: { globalUser: GlobalUser } };
@@ -33,7 +33,16 @@ export async function doImport(
   if (!project) return { success: false, err: "Target project not found", status: 404 };
   if (project.is_locked) return { success: false, err: "Project is locked. Unlock it before importing.", status: 409 };
 
+  // Ensure the project database exists (it may not if the server was restarted after creation)
+  const postgresDb = getPgConnectionFromCacheOrNew("postgres", "READ_AND_WRITE");
+  const dbExists = await postgresDb<{ datname: string }[]>`
+    SELECT datname FROM pg_catalog.pg_database WHERE datname = ${targetProjectId}
+  `;
+  if (dbExists.length === 0) {
+    await postgresDb.unsafe(`CREATE DATABASE "${targetProjectId.replace(/"/g, "")}"`);
+  }
   const projectDb = getPgConnectionFromCacheOrNew(targetProjectId, "READ_AND_WRITE");
+  await initProjectDb(projectDb);
   let nResultsObjects = 0;
   let nRowsTotal = 0;
 

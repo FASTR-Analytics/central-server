@@ -1,10 +1,12 @@
 import {
+  AlertComponentProps,
+  AlertFormHolder,
   Button,
   HeadingBarMainRibbon,
   Input,
   LockIcon,
+  openComponent,
   timActionForm,
-  timQuery,
 } from "panther";
 import { For, Show, createSignal } from "solid-js";
 import type { ProjectSummary } from "lib";
@@ -31,61 +33,60 @@ function formatTimeAgo(isoString: string): string {
   return date.toLocaleDateString();
 }
 
+function _CreateProjectForm(p: AlertComponentProps<{}, { id: string }>) {
+  const [label, setLabel] = createSignal("");
+
+  const save = timActionForm(
+    async () => {
+      const trimmed = label().trim();
+      if (!trimmed) return { success: false as const, err: "Enter a project name" };
+      return serverActions.createProject({ label: trimmed });
+    },
+    async () => {},
+    (data) => p.close(data!),
+  );
+
+  return (
+    <AlertFormHolder
+      formId="create-project"
+      header="Create project"
+      savingState={save.state()}
+      saveFunc={save.click}
+      cancelFunc={() => p.close(undefined)}
+    >
+      <div class="ui-spy">
+        <Input
+          label="Project name"
+          value={label()}
+          onChange={setLabel}
+          fullWidth
+          autoFocus
+        />
+      </div>
+    </AlertFormHolder>
+  );
+}
+
 export function ProjectsGrid(p: Props) {
   const visibleProjects = () => p.projects.filter((pr) => pr.status !== "pending_deletion");
 
-  const [showCreateForm, setShowCreateForm] = createSignal(false);
-  const [newLabel, setNewLabel] = createSignal("");
-
-  const createAction = timActionForm(
-    (label: string) => serverActions.createProject({ label }),
-    async () => {
-      setShowCreateForm(false);
-      setNewLabel("");
-      await p.onProjectCreated();
-    },
-  );
-
-  function submitCreate(e: SubmitEvent) {
-    e.preventDefault();
-    const l = newLabel().trim();
-    if (!l) return;
-    createAction.click(l);
+  async function attemptCreateProject() {
+    const res = await openComponent<{}, { id: string }>({
+      element: _CreateProjectForm,
+      props: {},
+    });
+    if (res === undefined) return;
+    await p.onProjectCreated();
   }
 
   return (
     <div class="flex h-full flex-col">
       <HeadingBarMainRibbon heading="Projects">
-        <div class="flex items-center gap-2">
-          <Show when={showCreateForm()}>
-            <form class="flex items-center gap-2" onSubmit={submitCreate}>
-              <Input
-                value={newLabel()}
-                onChange={setNewLabel}
-                label="Project name"
-                autoFocus
-              />
-              <Button
-                intent="primary"
-                iconName="check"
-                type="submit"
-                state={createAction.state()}
-                ariaLabel="Create"
-              />
-              <Button
-                iconName="x"
-                outline
-                onClick={() => { setShowCreateForm(false); setNewLabel(""); }}
-                ariaLabel="Cancel"
-              />
-            </form>
-          </Show>
-          <Show when={p.canCreateProjects && !showCreateForm()}>
-            <Button intent="primary" iconName="plus" onClick={() => setShowCreateForm(true)}>
-              Create project
-            </Button>
-          </Show>
-        </div>
+        <Show when={p.canCreateProjects}>
+          <Button intent="primary" iconName="plus" onClick={attemptCreateProject}>
+            Create project
+          </Button>
+        </Show>
       </HeadingBarMainRibbon>
 
       <div class="ui-pad ui-gap grid h-full w-full flex-1 grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] content-start overflow-auto">

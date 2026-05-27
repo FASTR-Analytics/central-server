@@ -165,6 +165,8 @@ routesProjects.post("/projects", requireAuth(), async (c) => {
     `;
   }
 
+  const postgresDb = getPgConnectionFromCacheOrNew("postgres", "READ_AND_WRITE");
+  await postgresDb.unsafe(`CREATE DATABASE "${projectId.replace(/"/g, "")}"`);
   const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_AND_WRITE");
   await initProjectDb(projectDb);
 
