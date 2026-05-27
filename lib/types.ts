@@ -172,6 +172,19 @@ export type CentralExportPayload = {
   modules: CountryModule[];
   resultsObjects: CountryResultsObject[];
   metrics: CountryMetric[];
+  calculatedIndicators: CountryCalculatedIndicator[];
+};
+
+export type CountryCalculatedIndicator = {
+  calculated_indicator_id: string;
+  label: string;
+  format_as: string;
+  decimal_places: number;
+  threshold_direction: string;
+  threshold_green: number;
+  threshold_yellow: number;
+  group_label: string;
+  sort_order: number;
 };
 
 export type CountryModule = {

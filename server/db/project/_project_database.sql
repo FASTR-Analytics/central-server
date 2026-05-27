@@ -62,3 +62,16 @@ CREATE TABLE IF NOT EXISTS presentation_objects (
 );
 
 CREATE INDEX IF NOT EXISTS idx_presentation_objects_metric_id ON presentation_objects(metric_id);
+
+-- Calculated indicator label map — imported from country servers
+CREATE TABLE IF NOT EXISTS calculated_indicators_snapshot (
+  calculated_indicator_id TEXT PRIMARY KEY NOT NULL,
+  label TEXT NOT NULL,
+  format_as TEXT NOT NULL DEFAULT 'number',
+  decimal_places INTEGER NOT NULL DEFAULT 0,
+  threshold_direction TEXT NOT NULL DEFAULT 'higher_is_better',
+  threshold_green DOUBLE PRECISION NOT NULL DEFAULT 0,
+  threshold_yellow DOUBLE PRECISION NOT NULL DEFAULT 0,
+  group_label TEXT NOT NULL DEFAULT '',
+  sort_order INTEGER NOT NULL DEFAULT 0
+);

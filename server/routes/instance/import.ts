@@ -22,7 +22,7 @@ export async function doImport(
   payload: CentralExportPayload & { targetProjectId: string },
   email: string,
 ): Promise<{ success: true; data: { nResultsObjects: number; nRowsTotal: number } } | { success: false; err: string; status?: number }> {
-  const { sourceInstanceId, sourceInstanceLabel, sourceProjectId, modules, resultsObjects, metrics, targetProjectId } = payload;
+  const { sourceInstanceId, sourceInstanceLabel, sourceProjectId, modules, resultsObjects, metrics, calculatedIndicators, targetProjectId } = payload;
 
   if (!targetProjectId) return { success: false, err: "targetProjectId required", status: 400 };
 
@@ -132,6 +132,30 @@ export async function doImport(
           hide = EXCLUDED.hide,
           important_notes = EXCLUDED.important_notes
       `;
+    }
+
+    if (calculatedIndicators?.length) {
+      for (const ci of calculatedIndicators) {
+        await projectDb`
+          INSERT INTO calculated_indicators_snapshot (
+            calculated_indicator_id, label, format_as, decimal_places,
+            threshold_direction, threshold_green, threshold_yellow, group_label, sort_order
+          ) VALUES (
+            ${ci.calculated_indicator_id}, ${ci.label}, ${ci.format_as}, ${ci.decimal_places},
+            ${ci.threshold_direction}, ${ci.threshold_green}, ${ci.threshold_yellow},
+            ${ci.group_label}, ${ci.sort_order}
+          )
+          ON CONFLICT (calculated_indicator_id) DO UPDATE SET
+            label = EXCLUDED.label,
+            format_as = EXCLUDED.format_as,
+            decimal_places = EXCLUDED.decimal_places,
+            threshold_direction = EXCLUDED.threshold_direction,
+            threshold_green = EXCLUDED.threshold_green,
+            threshold_yellow = EXCLUDED.threshold_yellow,
+            group_label = EXCLUDED.group_label,
+            sort_order = EXCLUDED.sort_order
+        `;
+      }
     }
 
     await mainDb`
