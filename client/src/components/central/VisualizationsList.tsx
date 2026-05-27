@@ -4,11 +4,9 @@ import {
   StateHolderWrapper,
   Table,
   type TableColumn,
-  openConfirm,
-  timActionButton,
   timQuery,
 } from "panther";
-import { createMemo, For, Show } from "solid-js";
+import { createMemo, Show } from "solid-js";
 import { serverActions, type PresentationObjectSummary } from "~/server_actions";
 
 type Props = {
@@ -29,7 +27,7 @@ export function VisualizationsList(p: Props) {
   ]);
 
   return (
-    <div class="flex h-full flex-col">
+    <div class="flex h-full w-full min-w-0 flex-col">
       <HeadingBar heading="Visualizations" ensureHeightAsIfButton>
         <Button intent="primary" iconName="plus" size="sm" onClick={() => p.onOpenEditor(null)}>
           New visualization

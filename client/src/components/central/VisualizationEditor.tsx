@@ -59,7 +59,7 @@ export function VisualizationEditor(p: Props) {
   );
 
   return (
-    <div class="flex h-full flex-col">
+    <div class="flex h-full w-full min-w-0 flex-col">
       <StateHolderWrapper state={metricsQuery.state()}>
         {(metrics: ProjectMetric[]) => (
           <Show
