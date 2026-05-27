@@ -22,6 +22,7 @@ type Props = {
   project: ProjectSummary | undefined;
   onProjectUpdated: () => Promise<void>;
   isHUser: boolean;
+  onBack: () => void;
 };
 
 type Tab = "overview" | "visualizations";
@@ -80,6 +81,7 @@ export function ProjectDetail(p: Props) {
       <HeadingBar
         heading={p.project?.label ?? ""}
         ensureHeightAsIfButton
+        leftChildren={<Button iconName="chevronLeft" onClick={p.onBack} />}
       >
         <Show when={p.isHUser}>
           <div class="flex items-center gap-2">
