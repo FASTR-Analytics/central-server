@@ -17,6 +17,7 @@ import { getFigureInputsFromPresentationObject } from "~/generate_visualization/
 
 type Props = {
   projectId: string;
+  canConfigure: boolean;
   onOpenEditor: (id: string | null) => void;
 };
 
@@ -34,9 +35,11 @@ export function VisualizationsList(p: Props) {
   return (
     <div class="flex h-full w-full min-w-0 flex-col">
       <HeadingBar heading="Visualizations" ensureHeightAsIfButton>
-        <Button intent="primary" iconName="plus" size="sm" onClick={() => p.onOpenEditor(null)}>
-          New visualization
-        </Button>
+        <Show when={p.canConfigure}>
+          <Button intent="primary" iconName="plus" size="sm" onClick={() => p.onOpenEditor(null)}>
+            New visualization
+          </Button>
+        </Show>
       </HeadingBar>
       <div class="ui-pad flex flex-1 flex-col gap-4 overflow-auto">
         <StateHolderWrapper state={listQuery.state()}>

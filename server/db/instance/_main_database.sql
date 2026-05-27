@@ -21,3 +21,24 @@ CREATE TABLE IF NOT EXISTS import_history (
 );
 
 CREATE INDEX IF NOT EXISTS idx_import_history_target_project ON import_history(target_project_id);
+
+CREATE TABLE IF NOT EXISTS users (
+  email TEXT PRIMARY KEY NOT NULL,
+  first_name TEXT,
+  last_name TEXT,
+  is_admin BOOLEAN NOT NULL DEFAULT FALSE,
+  can_configure_users BOOLEAN NOT NULL DEFAULT FALSE,
+  can_create_projects BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+CREATE TABLE IF NOT EXISTS project_user_roles (
+  email TEXT NOT NULL REFERENCES users(email) ON DELETE CASCADE,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  can_configure_settings BOOLEAN NOT NULL DEFAULT FALSE,
+  can_configure_users BOOLEAN NOT NULL DEFAULT FALSE,
+  can_configure_data BOOLEAN NOT NULL DEFAULT FALSE,
+  can_view_data BOOLEAN NOT NULL DEFAULT FALSE,
+  can_configure_visualizations BOOLEAN NOT NULL DEFAULT FALSE,
+  can_view_visualizations BOOLEAN NOT NULL DEFAULT FALSE,
+  PRIMARY KEY (email, project_id)
+);

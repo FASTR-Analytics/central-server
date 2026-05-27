@@ -1,5 +1,7 @@
 import type { APIResponseWithData, APIResponseNoData } from "panther";
-import type { GlobalUser, ProjectSummary, ProjectDetail, CentralReportingProject } from "lib";
+import type { GlobalUser, ProjectSummary, ProjectDetail, CentralReportingProject, InstanceUser, ProjectUser, ProjectUserPermissions } from "lib";
+
+export type { InstanceUser, ProjectUser, ProjectUserPermissions };
 import type {
   GenericLongFormFetchConfig,
   ItemsHolderPresentationObject,
@@ -206,4 +208,48 @@ export const serverActions = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ metricId: args.metricId, moduleLastRun: args.moduleLastRun }),
     }),
+
+  // Instance user management
+  getUsers: (_args: Record<string, never>) =>
+    apiFetch<InstanceUser[]>("/users"),
+
+  addUsers: (args: { emails: string[] }) =>
+    apiFetch<Record<string, never>>("/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ emails: args.emails }),
+    }),
+
+  deleteUser: (args: { email: string }) =>
+    apiFetch<Record<string, never>>(`/users/${encodeURIComponent(args.email)}`, {
+      method: "DELETE",
+    }),
+
+  toggleUserAdmin: (args: { email: string; isAdmin: boolean }) =>
+    apiFetch<Record<string, never>>(`/users/${encodeURIComponent(args.email)}/admin`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isAdmin: args.isAdmin }),
+    }),
+
+  // Project user management
+  setProjectUserPermissions: (args: {
+    projectId: string;
+    email: string;
+    permissions: ProjectUserPermissions;
+  }) =>
+    apiFetch<Record<string, never>>(
+      `/projects/${args.projectId}/users/${encodeURIComponent(args.email)}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(args.permissions),
+      },
+    ),
+
+  removeProjectUser: (args: { projectId: string; email: string }) =>
+    apiFetch<Record<string, never>>(
+      `/projects/${args.projectId}/users/${encodeURIComponent(args.email)}`,
+      { method: "DELETE" },
+    ),
 };

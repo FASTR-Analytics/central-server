@@ -1,10 +1,10 @@
-import { FrameTop, HeadingBarMainRibbon, StateHolderWrapper, timQuery } from "panther";
-import { Show } from "solid-js";
+import { Button, FrameTop, HeadingBarMainRibbon, StateHolderWrapper, timQuery } from "panther";
+import { Show, createSignal } from "solid-js";
 import type { GlobalUser, ProjectSummary } from "lib";
 import { serverActions } from "~/server_actions";
 import { ProjectsGrid } from "./ProjectsGrid";
 import { ProjectDetail } from "./ProjectDetail";
-import { createSignal } from "solid-js";
+import { InstanceUsers } from "./InstanceUsers";
 
 type Props = {
   globalUser: GlobalUser;
@@ -13,6 +13,7 @@ type Props = {
 
 export function CentralMain(p: Props) {
   const [selectedProjectId, setSelectedProjectId] = createSignal<string | null>(null);
+  const [showUsers, setShowUsers] = createSignal(false);
 
   const projectsQuery = timQuery(
     () => serverActions.getProjects({}),
@@ -31,32 +32,52 @@ export function CentralMain(p: Props) {
         <HeadingBarMainRibbon heading="FASTR Central Hub">
           <div class="flex items-center gap-3">
             <span class="text-base-100/60 text-sm">{p.globalUser.email}</span>
+            <Show when={p.globalUser.canConfigureUsers}>
+              <Button
+                intent={showUsers() ? "primary" : "neutral"}
+                iconName="users"
+                size="sm"
+                onClick={() => {
+                  setShowUsers((v) => !v);
+                  setSelectedProjectId(null);
+                }}
+              >
+                Users
+              </Button>
+            </Show>
           </div>
         </HeadingBarMainRibbon>
       }
     >
       <Show
-        when={selectedProjectId()}
+        when={showUsers()}
         fallback={
-          <StateHolderWrapper state={projectsQuery.state()}>
-            {(projects: ProjectSummary[]) => (
-              <ProjectsGrid
-                projects={projects}
-                isHUser={p.globalUser.isHUser}
-                onSelectProject={setSelectedProjectId}
-                onProjectCreated={projectsQuery.silentFetch}
-              />
-            )}
-          </StateHolderWrapper>
+          <Show
+            when={selectedProjectId()}
+            fallback={
+              <StateHolderWrapper state={projectsQuery.state()}>
+                {(projects: ProjectSummary[]) => (
+                  <ProjectsGrid
+                    projects={projects}
+                    canCreateProjects={p.globalUser.canCreateProjects}
+                    onSelectProject={setSelectedProjectId}
+                    onProjectCreated={projectsQuery.silentFetch}
+                  />
+                )}
+              </StateHolderWrapper>
+            }
+          >
+            <ProjectDetail
+              projectId={selectedProjectId()!}
+              project={selectedProject()}
+              globalUser={p.globalUser}
+              onProjectUpdated={projectsQuery.silentFetch}
+              onBack={() => setSelectedProjectId(null)}
+            />
+          </Show>
         }
       >
-        <ProjectDetail
-          projectId={selectedProjectId()!}
-          project={selectedProject()}
-          onProjectUpdated={projectsQuery.silentFetch}
-          isHUser={p.globalUser.isHUser}
-          onBack={() => setSelectedProjectId(null)}
-        />
+        <InstanceUsers globalUser={p.globalUser} />
       </Show>
     </FrameTop>
   );

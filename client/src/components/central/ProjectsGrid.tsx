@@ -12,7 +12,7 @@ import { serverActions } from "~/server_actions";
 
 type Props = {
   projects: ProjectSummary[];
-  isHUser: boolean;
+  canCreateProjects: boolean;
   onSelectProject: (id: string) => void;
   onProjectCreated: () => Promise<void>;
 };
@@ -80,7 +80,7 @@ export function ProjectsGrid(p: Props) {
               />
             </form>
           </Show>
-          <Show when={p.isHUser && !showCreateForm()}>
+          <Show when={p.canCreateProjects && !showCreateForm()}>
             <Button intent="primary" iconName="plus" onClick={() => setShowCreateForm(true)}>
               Create project
             </Button>
