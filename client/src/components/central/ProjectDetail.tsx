@@ -74,21 +74,12 @@ export function ProjectDetail(p: Props) {
     return s.data.thisUserPermissions;
   });
 
-  const tabList = createMemo(() => [
-    ...(perms().can_configure_data || perms().can_view_data
-      ? [{ value: "data", label: "Data" }]
-      : []),
-    ...(perms().can_view_visualizations
-      ? [{ value: "visualizations", label: "Visualizations" }]
-      : []),
-    ...(perms().can_configure_settings || perms().can_configure_users
-      ? [{ value: "settings", label: "Settings" }]
-      : []),
-  ]);
-
-  // Use a loading placeholder tab while perms are being fetched
   const tabs = getTabs(
-    tabList().length > 0 ? tabList() : [{ value: "loading", label: "Loading..." }],
+    [
+      { value: "data", label: "Data" },
+      { value: "visualizations", label: "Visualizations" },
+      { value: "settings", label: "Settings" },
+    ],
     { onTabChange: () => setEditingPoId(undefined) },
   );
 
@@ -193,23 +184,32 @@ export function ProjectDetail(p: Props) {
             </Match>
 
             <Match when={tabs.isTabActive("visualizations")}>
-              <Switch>
-                <Match when={editingPoId() !== undefined}>
-                  <VisualizationEditor
-                    projectId={p.projectId}
-                    poId={editingPoId()!}
-                    onClose={() => setEditingPoId(undefined)}
-                    onSaved={(newId) => setEditingPoId(newId ?? undefined)}
-                  />
-                </Match>
-                <Match when={true}>
-                  <VisualizationsList
-                    projectId={p.projectId}
-                    canConfigure={perms().can_configure_visualizations}
-                    onOpenEditor={(id) => setEditingPoId(id)}
-                  />
-                </Match>
-              </Switch>
+              <Show
+                when={perms().can_view_visualizations}
+                fallback={
+                  <div class="ui-pad text-base-content/40 text-sm">
+                    {detailQuery.state().status === "loading" ? "Loading..." : "No access"}
+                  </div>
+                }
+              >
+                <Switch>
+                  <Match when={editingPoId() !== undefined}>
+                    <VisualizationEditor
+                      projectId={p.projectId}
+                      poId={editingPoId()!}
+                      onClose={() => setEditingPoId(undefined)}
+                      onSaved={(newId) => setEditingPoId(newId ?? undefined)}
+                    />
+                  </Match>
+                  <Match when={true}>
+                    <VisualizationsList
+                      projectId={p.projectId}
+                      canConfigure={perms().can_configure_visualizations}
+                      onOpenEditor={(id) => setEditingPoId(id)}
+                    />
+                  </Match>
+                </Switch>
+              </Show>
             </Match>
 
             <Match when={tabs.isTabActive("settings")}>

@@ -1,10 +1,12 @@
-import { Button, FrameTop, HeadingBarMainRibbon, StateHolderWrapper, timQuery } from "panther";
-import { Show, createSignal } from "solid-js";
+import { ButtonGroup, FrameTop, StateHolderWrapper, timQuery } from "panther";
+import { Match, Show, Switch, createSignal } from "solid-js";
 import type { GlobalUser, ProjectSummary } from "lib";
 import { serverActions } from "~/server_actions";
 import { ProjectsGrid } from "./ProjectsGrid";
 import { ProjectDetail } from "./ProjectDetail";
 import { InstanceUsers } from "./InstanceUsers";
+
+type Tab = "projects" | "users";
 
 type Props = {
   globalUser: GlobalUser;
@@ -13,7 +15,14 @@ type Props = {
 
 export function CentralMain(p: Props) {
   const [selectedProjectId, setSelectedProjectId] = createSignal<string | null>(null);
-  const [showUsers, setShowUsers] = createSignal(false);
+  const [tab, setTab] = createSignal<Tab>("projects");
+
+  const tabOptions = () => [
+    { value: "projects" as Tab, label: "Projects", iconName: "folder" as const },
+    ...(p.globalUser.canConfigureUsers
+      ? [{ value: "users" as Tab, label: "Users", iconName: "users" as const }]
+      : []),
+  ];
 
   const projectsQuery = timQuery(
     () => serverActions.getProjects({}),
@@ -26,58 +35,80 @@ export function CentralMain(p: Props) {
     return s.data.find((pr) => pr.id === selectedProjectId());
   };
 
+  function handleTabChange(t: Tab | undefined) {
+    if (!t) return;
+    setTab(t);
+    setSelectedProjectId(null);
+  }
+
   return (
     <FrameTop
       panelChildren={
-        <HeadingBarMainRibbon heading="FASTR Central Hub">
-          <div class="flex items-center gap-3">
-            <span class="text-base-100/60 text-sm">{p.globalUser.email}</span>
-            <Show when={p.globalUser.canConfigureUsers}>
-              <Button
-                intent={showUsers() ? "primary" : "neutral"}
-                iconName="users"
-                size="sm"
-                onClick={() => {
-                  setShowUsers((v) => !v);
-                  setSelectedProjectId(null);
-                }}
-              >
-                Users
-              </Button>
+        <div class="ui-pad ui-gap bg-base-100 text-base-content flex items-center border-b border-base-300">
+          <div class="flex-none border-r border-base-300 pr-4">
+            <span class="font-700 text-xl">FASTR Central Hub</span>
+          </div>
+          <div class="flex flex-1 justify-center">
+            <Show when={p.globalUser.approved}>
+              <ButtonGroup
+                value={tab()}
+                onChange={handleTabChange}
+                options={tabOptions()}
+                itemWidth="115px"
+              />
             </Show>
           </div>
-        </HeadingBarMainRibbon>
+          <div class="flex flex-none items-center">
+            <span class="text-base-content/50 text-sm">{p.globalUser.email}</span>
+          </div>
+        </div>
       }
     >
       <Show
-        when={showUsers()}
+        when={p.globalUser.approved}
         fallback={
-          <Show
-            when={selectedProjectId()}
-            fallback={
-              <StateHolderWrapper state={projectsQuery.state()}>
-                {(projects: ProjectSummary[]) => (
-                  <ProjectsGrid
-                    projects={projects}
-                    canCreateProjects={p.globalUser.canCreateProjects}
-                    onSelectProject={setSelectedProjectId}
-                    onProjectCreated={projectsQuery.silentFetch}
-                  />
-                )}
-              </StateHolderWrapper>
-            }
-          >
-            <ProjectDetail
-              projectId={selectedProjectId()!}
-              project={selectedProject()}
-              globalUser={p.globalUser}
-              onProjectUpdated={projectsQuery.silentFetch}
-              onBack={() => setSelectedProjectId(null)}
-            />
-          </Show>
+          <div class="ui-pad ui-spy">
+            <p>You are not yet approved. Wait for an administrator to add you to the platform.</p>
+            <button
+              type="button"
+              class="text-base-content/50 text-sm underline"
+              onClick={p.attemptSignOut}
+            >
+              Sign out
+            </button>
+          </div>
         }
       >
-        <InstanceUsers globalUser={p.globalUser} />
+        <Switch>
+          <Match when={tab() === "users" && p.globalUser.canConfigureUsers}>
+            <InstanceUsers globalUser={p.globalUser} />
+          </Match>
+          <Match when={true}>
+            <Show
+              when={selectedProjectId()}
+              fallback={
+                <StateHolderWrapper state={projectsQuery.state()}>
+                  {(projects: ProjectSummary[]) => (
+                    <ProjectsGrid
+                      projects={projects}
+                      canCreateProjects={p.globalUser.canCreateProjects}
+                      onSelectProject={setSelectedProjectId}
+                      onProjectCreated={projectsQuery.silentFetch}
+                    />
+                  )}
+                </StateHolderWrapper>
+              }
+            >
+              <ProjectDetail
+                projectId={selectedProjectId()!}
+                project={selectedProject()}
+                globalUser={p.globalUser}
+                onProjectUpdated={projectsQuery.silentFetch}
+                onBack={() => setSelectedProjectId(null)}
+              />
+            </Show>
+          </Match>
+        </Switch>
       </Show>
     </FrameTop>
   );

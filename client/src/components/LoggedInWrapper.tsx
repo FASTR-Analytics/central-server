@@ -73,23 +73,7 @@ export function LoggedInWrapper(p: Props) {
         }
       >
         <StateHolderWrapper state={globalUserQuery.state()}>
-          {(globalUser) => {
-            if (!globalUser.approved) {
-              return (
-                <div class="flex h-full flex-col items-center justify-center gap-4">
-                  <div class="text-danger">Your account is not approved for this instance.</div>
-                  <button
-                    type="button"
-                    class="text-base-content/50 text-sm"
-                    onClick={attemptSignOut}
-                  >
-                    Sign out
-                  </button>
-                </div>
-              );
-            }
-            return p.children(globalUser, attemptSignOut);
-          }}
+          {(globalUser) => p.children(globalUser, attemptSignOut)}
         </StateHolderWrapper>
       </Show>
     </Show>
