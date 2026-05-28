@@ -2,7 +2,7 @@ import {
   Button,
   Checkbox,
   FrameLeft,
-  HeadingBar,
+  FrameTop,
   ModalContainer,
   Select,
   StateHolderFormError,
@@ -129,28 +129,30 @@ export function ProjectDetail(p: Props) {
   ]);
 
   return (
-    <div class="flex h-full flex-col">
-      <HeadingBar
-        heading={p.project?.label ?? ""}
-        ensureHeightAsIfButton
-        leftChildren={<Button iconName="chevronLeft" onClick={p.onBack} />}
-      />
-
-      <div class="flex-1 overflow-hidden">
-        <FrameLeft
-          panelChildren={
-            <div class="h-full border-r">
-              <TabsNavigation
-                tabs={tabs}
-                vertical
-                collapsible
-                collapsed={navCollapsed()}
-                onCollapsedChange={setNavCollapsed}
-                icons={tabIcons}
-              />
-            </div>
-          }
-        >
+    <FrameTop
+      panelChildren={
+        <div class="ui-gap ui-pad bg-base-content border-base-content text-base-100 flex h-full w-full items-center border-b">
+          <Button iconName="chevronLeft" onClick={p.onBack} />
+          <div class="font-700 flex-1 truncate text-xl">
+            <span class="font-400">{p.project?.label ?? ""}</span>
+          </div>
+        </div>
+      }
+    >
+      <FrameLeft
+        panelChildren={
+          <div class="h-full border-r">
+            <TabsNavigation
+              tabs={tabs}
+              vertical
+              collapsible
+              collapsed={navCollapsed()}
+              onCollapsedChange={setNavCollapsed}
+              icons={tabIcons}
+            />
+          </div>
+        }
+      >
           <Switch>
             <Match when={tabs.isTabActive("data")}>
               <div class="ui-pad flex flex-col gap-6 overflow-auto">
@@ -282,9 +284,8 @@ export function ProjectDetail(p: Props) {
               </div>
             </Match>
           </Switch>
-        </FrameLeft>
-      </div>
-    </div>
+      </FrameLeft>
+    </FrameTop>
   );
 }
 

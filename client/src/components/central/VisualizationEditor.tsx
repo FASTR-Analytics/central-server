@@ -182,6 +182,16 @@ function _EditorActive(p: ActiveProps) {
       (periodCols as readonly string[]).includes(d.value),
     )?.value as (typeof periodCols)[number] | undefined;
 
+    const parsedLabelReplacements = (() => {
+      try {
+        return p.metric.valueLabelReplacements
+          ? (JSON.parse(p.metric.valueLabelReplacements) as Record<string, string>)
+          : undefined;
+      } catch {
+        return undefined;
+      }
+    })();
+
     const resultsValue: ResultsValue = {
       id: p.metric.id,
       resultsObjectId: p.metric.resultsObjectId,
@@ -192,6 +202,7 @@ function _EditorActive(p: ActiveProps) {
       formatAs: p.metric.formatAs as "percent" | "number",
       disaggregationOptions: disOpts,
       mostGranularTimePeriodColumnInResultsFile: mostGranular,
+      valueLabelReplacements: parsedLabelReplacements,
     };
 
     return {

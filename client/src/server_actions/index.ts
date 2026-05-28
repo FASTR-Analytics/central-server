@@ -20,6 +20,7 @@ export type ProjectMetric = {
   formatAs: string;
   valueProps: string;
   requiredDisaggregationOptions: string;
+  valueLabelReplacements: string | null;
   resultsObjectId: string;
   hide: boolean;
   lastRunAt: string;
