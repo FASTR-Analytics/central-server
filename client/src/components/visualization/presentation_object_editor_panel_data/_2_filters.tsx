@@ -444,15 +444,15 @@ function DisaggregationFilter(p: DisaggregationFilterProps) {
                       {(opt) => (
                         <div
                           class="ui-hoverable bg-base-200 data-[selected=true]:bg-success data-[selected=true]:text-base-100 rounded px-2 py-1"
-                          onClick={() => toggleVal(opt)}
+                          onClick={() => toggleVal(opt.id)}
                           data-selected={keyedFilter.values.some(
-                            v => String(v).toLowerCase() === String(opt).toLowerCase()
+                            v => String(v).toLowerCase() === String(opt.id).toLowerCase()
                           )}
                         >
                           <span class="relative">
                             {keyedFilter.disOpt === "indicator_common_id"
-                              ? String(opt).toUpperCase()
-                              : opt}
+                              ? opt.id.toUpperCase()
+                              : opt.label}
                           </span>
                         </div>
                       )}

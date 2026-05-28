@@ -53,15 +53,15 @@ function getCoverageSeriesColorFunc(): (
   info: ChartSeriesInfo,
 ) => ColorKeyOrString {
   return (info) => {
-    if (info.seriesHeader.startsWith("default")) return "#000000";
+    if (info.seriesHeader.label.startsWith("default")) return "#000000";
     if (
-      info.seriesHeader.startsWith("Survey") ||
-      info.seriesHeader.startsWith("Estimation basée")
+      info.seriesHeader.label.startsWith("Survey") ||
+      info.seriesHeader.label.startsWith("Estimation basée")
     )
       return "#000000";
     if (
-      info.seriesHeader.startsWith("Projected") ||
-      info.seriesHeader.startsWith("Estimation projetée")
+      info.seriesHeader.label.startsWith("Projected") ||
+      info.seriesHeader.label.startsWith("Estimation projetée")
     )
       return "#F04D44";
     return "#CED4DB";

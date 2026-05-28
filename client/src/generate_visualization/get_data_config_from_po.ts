@@ -1,6 +1,8 @@
 import {
   ChartOHJsonDataConfig,
   ChartOVJsonDataConfig,
+  HeaderItem,
+  HeaderSortConfig,
   TableJsonDataConfig,
   TimeseriesJsonDataConfig,
 } from "panther";
@@ -18,28 +20,31 @@ function includesIndicatorDisaggregation(config: PresentationObjectConfig): bool
   return config.d.disaggregateBy.some((d) => d.disOpt === "indicator_common_id");
 }
 
-function getNigeriaLabelReplacements(_jsonArray?: any[]): Record<string, string> {
-  return {};
-}
-
-function buildLabelReplacementsAfterSorting(
+function buildLabelReplacements(
+  resultsValue: ResultsValueForVisualization,
   indicatorLabelReplacements: Record<string, string>,
   dateLabelReplacements: Record<string, string>,
-  nigeriaLabelReplacements: Record<string, string>,
 ): Record<string, string> {
   return {
+    ...(resultsValue.valueLabelReplacements ?? {}),
     ...indicatorLabelReplacements,
     ...dateLabelReplacements,
-    ...nigeriaLabelReplacements,
     __NATIONAL: t3(TC.national),
     zzNATIONAL: t3(TC.national),
   };
 }
 
-function getSortHeaders(config: PresentationObjectConfig): string[] | boolean {
+function getChartIndicatorSort(config: PresentationObjectConfig): HeaderSortConfig {
   return includesIndicatorDisaggregation(config)
-    ? get_INDICATOR_COMMON_IDS_IN_SORT_ORDER()
-    : true;
+    ? { byIdOrder: get_INDICATOR_COMMON_IDS_IN_SORT_ORDER() }
+    : "by-label";
+}
+
+function nationalAwareSortByLabel(a: HeaderItem, b: HeaderItem): number {
+  const aPri = a.id === "__NATIONAL" ? -1 : a.id === "zzNATIONAL" ? 1 : 0;
+  const bPri = b.id === "__NATIONAL" ? -1 : b.id === "zzNATIONAL" ? 1 : 0;
+  if (aPri !== bPri) return aPri - bPri;
+  return a.label.localeCompare(b.label);
 }
 
 export function getTimeseriesJsonDataConfigFromPresentationObjectConfig(
@@ -72,13 +77,13 @@ export function getTimeseriesJsonDataConfigFromPresentationObjectConfig(
     paneProp: getDisaggregatorDisplayProp(resultsValue, config, ["cell"], effectiveValueProps),
     laneProp: getDisaggregatorDisplayProp(resultsValue, config, ["col", "colGroup"], effectiveValueProps),
     tierProp: getDisaggregatorDisplayProp(resultsValue, config, ["row", "rowGroup"], effectiveValueProps),
-    sortHeaders: getSortHeaders(config),
-    labelReplacementsBeforeSorting: resultsValue.valueLabelReplacements ?? {},
-    labelReplacementsAfterSorting: buildLabelReplacementsAfterSorting(
-      indicatorLabelReplacements,
-      {},
-      getNigeriaLabelReplacements(jsonArray),
-    ),
+    sort: {
+      series: nationalAwareSortByLabel,
+      lane: nationalAwareSortByLabel,
+      tier: nationalAwareSortByLabel,
+      pane: nationalAwareSortByLabel,
+    },
+    labelReplacements: buildLabelReplacements(resultsValue, indicatorLabelReplacements, {}),
   };
 }
 
@@ -104,19 +109,20 @@ export function getTableJsonDataConfigFromPresentationObjectConfig(
     ? getDateLabelReplacements(jsonArray, [colProp, rowProp, colGroupProp, rowGroupProp])
     : {};
 
+  const tableSort: HeaderSortConfig = customSortHeaders
+    ? { byIdOrder: customSortHeaders }
+    : includesIndicatorDisaggregation(config)
+      ? { byIdOrder: get_INDICATOR_COMMON_IDS_IN_SORT_ORDER() }
+      : "by-label";
+
   return {
     valueProps: effectiveValueProps,
     colProp,
     rowProp,
     colGroupProp,
     rowGroupProp,
-    sortHeaders: customSortHeaders ?? getSortHeaders(config),
-    labelReplacementsBeforeSorting: resultsValue.valueLabelReplacements ?? {},
-    labelReplacementsAfterSorting: buildLabelReplacementsAfterSorting(
-      indicatorLabelReplacements,
-      dateLabelReplacements,
-      getNigeriaLabelReplacements(jsonArray),
-    ),
+    sort: { colGroup: tableSort, col: tableSort, rowGroup: tableSort, row: tableSort },
+    labelReplacements: buildLabelReplacements(resultsValue, indicatorLabelReplacements, dateLabelReplacements),
   };
 }
 
@@ -149,14 +155,15 @@ function getChartJsonDataConfig(
     paneProp,
     laneProp,
     tierProp,
-    sortHeaders: getSortHeaders(config),
+    sort: {
+      indicator: getChartIndicatorSort(config),
+      series: nationalAwareSortByLabel,
+      lane: nationalAwareSortByLabel,
+      tier: nationalAwareSortByLabel,
+      pane: nationalAwareSortByLabel,
+    },
     sortIndicatorValues: config.s.sortIndicatorValues,
-    labelReplacementsBeforeSorting: resultsValue.valueLabelReplacements ?? {},
-    labelReplacementsAfterSorting: buildLabelReplacementsAfterSorting(
-      indicatorLabelReplacements,
-      dateLabelReplacements,
-      getNigeriaLabelReplacements(jsonArray),
-    ),
+    labelReplacements: buildLabelReplacements(resultsValue, indicatorLabelReplacements, dateLabelReplacements),
   };
 }
 

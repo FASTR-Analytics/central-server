@@ -36,7 +36,7 @@ routesPresentationObjects.get("/projects/:projectId/metrics", requireAuth(), asy
   const roAvailableOptions = new Map<string, string[]>();
 
   const PHYSICAL_DISAGG_COLS = [
-    "admin_area_2", "admin_area_3", "admin_area_4",
+    "admin_area_1", "admin_area_2", "admin_area_3", "admin_area_4",
     "indicator_common_id", "denominator", "denominator_best_or_survey",
     "source_indicator", "target_population", "ratio_type",
     "facility_type", "facility_ownership",

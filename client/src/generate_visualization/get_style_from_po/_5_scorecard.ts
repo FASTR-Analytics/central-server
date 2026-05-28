@@ -48,7 +48,7 @@ export function buildScorecardStyle(
   indicatorMetadata: IndicatorMetadata[],
   deckStyle?: DeckStyleContext,
 ): CustomFigureStyleOptions {
-  const metadataByLabel = new Map(indicatorMetadata.map((m) => [m.label, m]));
+  const metadataById = new Map(indicatorMetadata.map((m) => [m.id, m]));
 
   return {
     scale: config.s.scale,
@@ -59,8 +59,8 @@ export function buildScorecardStyle(
       tableCells: {
         func: (info: TableCellInfo) => {
           const meta =
-            metadataByLabel.get(info.colHeader) ??
-            metadataByLabel.get(info.rowHeader);
+            metadataById.get(info.colHeader?.id ?? "") ??
+            metadataById.get(info.rowHeader?.id ?? "");
           if (meta?.threshold_direction && info.valueAsNumber !== undefined) {
             const scaled = scaleValueForFormat(
               info.valueAsNumber,
@@ -83,8 +83,8 @@ export function buildScorecardStyle(
         },
         textFormatter: (info: TableCellInfo) => {
           const meta =
-            metadataByLabel.get(info.colHeader) ??
-            metadataByLabel.get(info.rowHeader);
+            metadataById.get(info.colHeader?.id ?? "") ??
+            metadataById.get(info.rowHeader?.id ?? "");
           if (meta?.format_as && info.valueAsNumber !== undefined) {
             return formatScorecardValue(
               info.valueAsNumber,
