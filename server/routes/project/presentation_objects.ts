@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { GlobalUser } from "lib";
 import { getPgConnectionFromCacheOrNew } from "../../db/mod.ts";
+import { getResultsObjectTableName } from "../../db/utils.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import {
   addPresentationObject,
@@ -29,6 +30,45 @@ routesPresentationObjects.get("/projects/:projectId/metrics", requireAuth(), asy
     JOIN modules mod ON m.module_id = mod.id
     ORDER BY m.label
   `;
+
+  // Detect available disaggregation options once per unique results object table
+  const uniqueRoIds = [...new Set(rows.map((r) => r.results_object_id))];
+  const roAvailableOptions = new Map<string, string[]>();
+
+  const PHYSICAL_DISAGG_COLS = [
+    "admin_area_2", "admin_area_3", "admin_area_4",
+    "indicator_common_id", "denominator", "denominator_best_or_survey",
+    "source_indicator", "target_population", "ratio_type",
+    "facility_type", "facility_ownership",
+    "facility_custom_1", "facility_custom_2", "facility_custom_3",
+    "facility_custom_4", "facility_custom_5",
+    "hfa_indicator", "hfa_category", "time_point",
+  ] as const;
+
+  for (const roId of uniqueRoIds) {
+    const tableName = getResultsObjectTableName(roId);
+    const colRows = await projectDb<{ column_name: string }[]>`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = ${tableName} AND table_schema = current_schema()
+    `;
+    const cols = new Set(colRows.map((c) => c.column_name));
+    const opts: string[] = [];
+
+    for (const col of PHYSICAL_DISAGG_COLS) {
+      if (cols.has(col)) opts.push(col);
+    }
+
+    if (cols.has("period_id")) {
+      opts.push("period_id", "year", "quarter_id", "month");
+    } else if (cols.has("quarter_id")) {
+      opts.push("quarter_id", "year");
+    } else if (cols.has("year")) {
+      opts.push("year");
+    }
+
+    roAvailableOptions.set(roId, opts);
+  }
+
   return c.json({
     success: true,
     data: rows.map((r) => ({
@@ -40,6 +80,7 @@ routesPresentationObjects.get("/projects/:projectId/metrics", requireAuth(), asy
       formatAs: r.format_as,
       valueProps: r.value_props,
       requiredDisaggregationOptions: r.required_disaggregation_options,
+      availableDisaggregationOptions: JSON.stringify(roAvailableOptions.get(r.results_object_id) ?? []),
       valueLabelReplacements: r.value_label_replacements,
       resultsObjectId: r.results_object_id,
       hide: r.hide,

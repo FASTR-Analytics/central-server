@@ -17,34 +17,48 @@ export async function getResultsValueInfoForPresentationObject(
   metricId: string,
   moduleLastRun: string,
 ): Promise<{ success: true; data: ResultsValueInfoForPresentationObject } | { success: false; err: string }> {
+  const PHYSICAL_DISAGG_COLS = [
+    "admin_area_2", "admin_area_3", "admin_area_4",
+    "indicator_common_id", "denominator", "denominator_best_or_survey",
+    "source_indicator", "target_population", "ratio_type",
+    "facility_type", "facility_ownership",
+    "facility_custom_1", "facility_custom_2", "facility_custom_3",
+    "facility_custom_4", "facility_custom_5",
+    "hfa_indicator", "hfa_category", "time_point",
+  ] as const;
+
   try {
     // Get metric info from project DB
-    const metricRow = (await projectDb<{ results_object_id: string; required_disaggregation_options: string; value_func: string }[]>`
-      SELECT results_object_id, required_disaggregation_options, value_func FROM metrics WHERE id = ${metricId}
+    const metricRow = (await projectDb<{ results_object_id: string }[]>`
+      SELECT results_object_id FROM metrics WHERE id = ${metricId}
     `).at(0);
     if (!metricRow) return { success: false, err: `Metric not found: ${metricId}` };
 
     const resultsObjectId = metricRow.results_object_id;
-
-    // Parse disaggregation options from JSON
-    let disaggregationOptions: DisaggregationOption[] = [];
-    try {
-      const parsed = JSON.parse(metricRow.required_disaggregation_options);
-      if (Array.isArray(parsed)) disaggregationOptions = parsed;
-    } catch { /* empty */ }
-
-    // Determine period option from disaggregation options
-    const firstPeriodOption: PeriodOption | undefined =
-      disaggregationOptions.find((d): d is PeriodOption =>
-        d === "period_id" || d === "year" || d === "quarter_id"
-      );
-
     const tableName = getResultsObjectTableName(resultsObjectId);
+
+    // Detect actual columns present in the results table
+    const colRows = await projectDb<{ column_name: string }[]>`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = ${tableName} AND table_schema = current_schema()
+    `;
+    const cols = new Set(colRows.map((c) => c.column_name));
+
+    // Build disaggregation options from physical columns present in the table
+    const disaggregationOptions: DisaggregationOption[] = PHYSICAL_DISAGG_COLS
+      .filter((col) => cols.has(col)) as DisaggregationOption[];
+
+    // Determine period option from actual table columns
+    const firstPeriodOption: PeriodOption | undefined =
+      cols.has("period_id") ? "period_id"
+      : cols.has("quarter_id") ? "quarter_id"
+      : cols.has("year") ? "year"
+      : undefined;
+
     const periodBounds = await getPeriodBounds(projectDb, tableName, [], firstPeriodOption);
 
     const disaggregationPossibleValues: { [key in DisaggregationOption]?: DisaggregationPossibleValuesStatus } = {};
     for (const disOpt of disaggregationOptions) {
-      if (disOpt === "period_id" || disOpt === "year" || disOpt === "quarter_id") continue;
       const res = await getPossibleValues(projectDb, resultsObjectId, disOpt, mainDb);
       if (!res.success) {
         disaggregationPossibleValues[disOpt] = { status: "error", message: res.err };

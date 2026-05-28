@@ -174,9 +174,14 @@ function _EditorActive(p: ActiveProps) {
   );
 
   const poDetailForPanel: PlatformPODetail = (() => {
-    const disOpts = (JSON.parse(p.metric.requiredDisaggregationOptions ?? "[]") as string[])
-      .filter(isDisaggregationOption)
-      .map((d) => ({ value: d, isRequired: true }));
+    const requiredSet = new Set(
+      (JSON.parse(p.metric.requiredDisaggregationOptions ?? "[]") as string[]).filter(isDisaggregationOption),
+    );
+    const available = (JSON.parse(p.metric.availableDisaggregationOptions ?? "[]") as string[]).filter(
+      isDisaggregationOption,
+    );
+    const allValues = [...new Set([...requiredSet, ...available])];
+    const disOpts = allValues.map((d) => ({ value: d, isRequired: requiredSet.has(d) }));
     const periodCols = ["period_id", "quarter_id", "year"] as const;
     const mostGranular = disOpts.find((d) =>
       (periodCols as readonly string[]).includes(d.value),

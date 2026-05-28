@@ -118,10 +118,19 @@ export function AddVisualizationModal(
     const type = selectedType();
     if (!type) return;
 
-    const disOpts = (JSON.parse(metric.requiredDisaggregationOptions ?? "[]") as string[]).filter(
+    const requiredSet = new Set(
+      (JSON.parse(metric.requiredDisaggregationOptions ?? "[]") as string[]).filter(isDisaggregationOption),
+    );
+    const available = (JSON.parse(metric.availableDisaggregationOptions ?? "[]") as string[]).filter(
       isDisaggregationOption,
     );
-    const allDisOpts = disOpts.map((d) => ({ value: d, isRequired: true }));
+    const allValues = [...new Set([...requiredSet, ...available])];
+    const allDisOpts = allValues.map((d) => ({ value: d, isRequired: requiredSet.has(d) }));
+
+    const periodCols = ["period_id", "quarter_id", "year"] as const;
+    const mostGranular = allDisOpts.find((d) =>
+      (periodCols as readonly string[]).includes(d.value),
+    )?.value as (typeof periodCols)[number] | undefined;
 
     const disaggregations = allDisOpts
       .filter((d) => d.isRequired || selectedDisaggregations().includes(d.value))
@@ -135,7 +144,7 @@ export function AddVisualizationModal(
       label: metric.label,
       formatAs: metric.formatAs,
       disaggregationOptions: allDisOpts,
-      mostGranularTimePeriodColumnInResultsFile: undefined,
+      mostGranularTimePeriodColumnInResultsFile: mostGranular,
     };
 
     const config = getStartingConfigForPresentationObject(fakeRv as any, type, disaggregations);
@@ -367,10 +376,14 @@ const TYPE_LABELS: Record<PresentationOption, string> = {
 function _Step2Configure(p: Step2Props) {
   const disOpts = createMemo(() => {
     if (!p.metric) return [];
-    const parsed = (
-      JSON.parse(p.metric.requiredDisaggregationOptions ?? "[]") as string[]
-    ).filter(isDisaggregationOption);
-    return parsed.map((d) => ({ value: d, isRequired: true }));
+    const requiredSet = new Set(
+      (JSON.parse(p.metric.requiredDisaggregationOptions ?? "[]") as string[]).filter(isDisaggregationOption),
+    );
+    const available = (JSON.parse(p.metric.availableDisaggregationOptions ?? "[]") as string[]).filter(
+      isDisaggregationOption,
+    );
+    const allValues = [...new Set([...requiredSet, ...available])];
+    return allValues.map((d) => ({ value: d, isRequired: requiredSet.has(d) }));
   });
 
   const typeOptions = createMemo(() => get_PRESENTATION_SELECT_OPTIONS(disOpts()));
