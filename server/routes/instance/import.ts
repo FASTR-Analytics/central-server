@@ -18,6 +18,21 @@ function buildBulkInsert(tableName: string, columns: string[], nRows: number): s
   return `INSERT INTO ${tableName} (${colList}) VALUES ${rows.join(", ")}`;
 }
 
+// deno-lint-ignore no-explicit-any
+export async function insertRowsChunk(projectDb: any, tableName: string, rows: Record<string, unknown>[], sourceInstanceId: string): Promise<void> {
+  if (rows.length === 0) return;
+  const columns = ["source_server_id", ...Object.keys(rows[0])];
+  const values = rows.map((row) => [sourceInstanceId, ...Object.values(row)]);
+  const chunkSize = 500;
+  for (let i = 0; i < values.length; i += chunkSize) {
+    const chunk = values.slice(i, i + chunkSize);
+    await projectDb.unsafe(
+      buildBulkInsert(tableName, columns, chunk.length),
+      chunk.flat() as (string | number | boolean | null)[],
+    );
+  }
+}
+
 export async function doImport(
   payload: CentralExportPayload & { targetProjectId: string },
   email: string,

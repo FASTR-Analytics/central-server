@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import type { GlobalUser, CentralExportPayload } from "lib";
 import { requireHUser } from "../../middleware/auth.ts";
-import { doImport } from "./import.ts";
+import { doImport, insertRowsChunk } from "./import.ts";
+import { getPgConnectionFromCacheOrNew, getResultsObjectTableName } from "../../db/mod.ts";
 
 type Env = { Variables: { globalUser: GlobalUser } };
 
@@ -63,5 +64,26 @@ routesCentral.post("/import_from_source", requireHUser(), async (c) => {
   if (!result.success) {
     return c.json(result, (result.status ?? 500) as 400 | 404 | 409 | 500);
   }
+
+  const projectDb = getPgConnectionFromCacheOrNew(targetProjectId, "READ_AND_WRITE");
+  const ROWS_PAGE_SIZE = 20000;
+
+  for (const ro of exportPayload.resultsObjects) {
+    const tableName = getResultsObjectTableName(ro.id);
+    let offset = 0;
+    while (true) {
+      const rowsRes = await fetch(
+        `https://${sourceServerId}.fastr-analytics.org/export_central/${sourceProjectId}/rows/${ro.id}?offset=${offset}`,
+        { headers: { Authorization: authHeader } },
+      );
+      if (!rowsRes.ok) break;
+      const rowsJson = await rowsRes.json() as { success: boolean; data?: { rows: Record<string, unknown>[]; hasMore: boolean } };
+      if (!rowsJson.success || !rowsJson.data) break;
+      await insertRowsChunk(projectDb, tableName, rowsJson.data.rows, exportPayload.sourceInstanceId);
+      if (!rowsJson.data.hasMore) break;
+      offset += ROWS_PAGE_SIZE;
+    }
+  }
+
   return c.json(result);
 });
