@@ -52,6 +52,9 @@ routesCentral.post("/import_from_source", requireHUser(), async (c) => {
     }
     const exportJson = await exportResponse.json();
     exportPayload = exportJson.data ?? exportJson;
+    if (!exportPayload || !Array.isArray(exportPayload.modules)) {
+      return c.json({ success: false, err: `Unexpected export response from ${sourceServerId}: ${JSON.stringify(exportPayload).slice(0, 300)}` }, 502);
+    }
   } catch (error) {
     return c.json({ success: false, err: `Failed to reach ${sourceServerId}: ${String(error)}` }, 502);
   }
