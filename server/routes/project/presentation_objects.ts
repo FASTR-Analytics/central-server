@@ -39,10 +39,11 @@ routesPresentationObjects.get("/projects/:projectId/metrics", requireAuth(), asy
     "admin_area_1", "admin_area_2", "admin_area_3", "admin_area_4",
     "indicator_common_id", "denominator", "denominator_best_or_survey",
     "source_indicator", "target_population", "ratio_type",
-    "facility_type", "facility_ownership",
+    "facility_name", "facility_type", "facility_ownership",
     "facility_custom_1", "facility_custom_2", "facility_custom_3",
     "facility_custom_4", "facility_custom_5",
-    "hfa_indicator", "hfa_category", "time_point",
+    "hfa_indicator", "hfa_category", "hfa_sub_category", "time_point",
+    "iceh_indicator", "strat", "level",
   ] as const;
 
   for (const roId of uniqueRoIds) {

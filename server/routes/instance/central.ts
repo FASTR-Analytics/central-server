@@ -73,7 +73,7 @@ routesCentral.post("/import_from_source", requireHUser(), async (c) => {
     let offset = 0;
     while (true) {
       const rowsRes = await fetch(
-        `https://${sourceServerId}.fastr-analytics.org/export_central/${sourceProjectId}/rows/${encodeURIComponent(ro.id)}?offset=${offset}`,
+        `https://${sourceServerId}.fastr-analytics.org/export_central/${sourceProjectId}/rows?ro_id=${encodeURIComponent(ro.id)}&offset=${offset}`,
         { headers: { Authorization: authHeader } },
       );
       if (!rowsRes.ok) {
