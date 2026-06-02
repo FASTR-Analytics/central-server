@@ -136,6 +136,12 @@ export function AddVisualizationModal(
       .filter((d) => d.isRequired || selectedDisaggregations().includes(d.value))
       .map((d) => d.value);
 
+    const parsedPostAggExpr = (() => {
+      try {
+        return metric.postAggregationExpression ? JSON.parse(metric.postAggregationExpression) : undefined;
+      } catch { return undefined; }
+    })();
+
     const fakeRv = {
       id: metric.id,
       resultsObjectId: metric.resultsObjectId,
@@ -145,6 +151,7 @@ export function AddVisualizationModal(
       formatAs: metric.formatAs,
       disaggregationOptions: allDisOpts,
       mostGranularTimePeriodColumnInResultsFile: mostGranular,
+      postAggregationExpression: parsedPostAggExpr,
     };
 
     const config = getStartingConfigForPresentationObject(fakeRv as any, type, disaggregations);

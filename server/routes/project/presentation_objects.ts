@@ -23,7 +23,7 @@ export const routesPresentationObjects = new Hono<Env>();
 routesPresentationObjects.get("/projects/:projectId/metrics", requireAuth(), async (c) => {
   const { projectId } = c.req.param();
   const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_ONLY");
-  type MetricRow = { id: string; module_id: string; label: string; variant_label: string | null; value_func: string; format_as: string; value_props: string; required_disaggregation_options: string; value_label_replacements: string | null; results_object_id: string; hide: boolean; last_run_at: string };
+  type MetricRow = { id: string; module_id: string; label: string; variant_label: string | null; value_func: string; format_as: string; value_props: string; required_disaggregation_options: string; value_label_replacements: string | null; post_aggregation_expression: string | null; results_object_id: string; hide: boolean; last_run_at: string };
   const rows = await projectDb<MetricRow[]>`
     SELECT m.*, mod.last_run_at
     FROM metrics m
@@ -88,6 +88,7 @@ routesPresentationObjects.get("/projects/:projectId/metrics", requireAuth(), asy
       })(),
       availableDisaggregationOptions: JSON.stringify(roAvailableOptions.get(r.results_object_id) ?? []),
       valueLabelReplacements: r.value_label_replacements,
+      postAggregationExpression: r.post_aggregation_expression,
       resultsObjectId: r.results_object_id,
       hide: r.hide,
       lastRunAt: r.last_run_at,

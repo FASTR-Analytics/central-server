@@ -22,6 +22,7 @@ export type ProjectMetric = {
   requiredDisaggregationOptions: string;
   availableDisaggregationOptions: string;
   valueLabelReplacements: string | null;
+  postAggregationExpression: string | null;
   resultsObjectId: string;
   hide: boolean;
   lastRunAt: string;

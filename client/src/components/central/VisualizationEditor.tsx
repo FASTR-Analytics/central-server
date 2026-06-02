@@ -197,6 +197,16 @@ function _EditorActive(p: ActiveProps) {
       }
     })();
 
+    const parsedPostAggregationExpression = (() => {
+      try {
+        return p.metric.postAggregationExpression
+          ? JSON.parse(p.metric.postAggregationExpression)
+          : undefined;
+      } catch {
+        return undefined;
+      }
+    })();
+
     const resultsValue: ResultsValue = {
       id: p.metric.id,
       resultsObjectId: p.metric.resultsObjectId,
@@ -208,6 +218,7 @@ function _EditorActive(p: ActiveProps) {
       disaggregationOptions: disOpts,
       mostGranularTimePeriodColumnInResultsFile: mostGranular,
       valueLabelReplacements: parsedLabelReplacements,
+      postAggregationExpression: parsedPostAggregationExpression,
     };
 
     return {
