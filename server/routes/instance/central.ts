@@ -76,9 +76,14 @@ routesCentral.post("/import_from_source", requireHUser(), async (c) => {
         `https://${sourceServerId}.fastr-analytics.org/export_central/${sourceProjectId}/rows/${ro.id}?offset=${offset}`,
         { headers: { Authorization: authHeader } },
       );
-      if (!rowsRes.ok) break;
+      if (!rowsRes.ok) {
+        const text = await rowsRes.text().catch(() => "");
+        return c.json({ success: false, err: `Failed to fetch rows for results object ${ro.id} (${rowsRes.status}): ${text.slice(0, 200)}` }, 502);
+      }
       const rowsJson = await rowsRes.json() as { success: boolean; data?: { rows: Record<string, unknown>[]; hasMore: boolean } };
-      if (!rowsJson.success || !rowsJson.data) break;
+      if (!rowsJson.success || !rowsJson.data) {
+        return c.json({ success: false, err: `Rows endpoint returned failure for results object ${ro.id}: ${JSON.stringify(rowsJson).slice(0, 200)}` }, 502);
+      }
       await insertRowsChunk(projectDb, tableName, rowsJson.data.rows, exportPayload.sourceInstanceId);
       if (!rowsJson.data.hasMore) break;
       offset += ROWS_PAGE_SIZE;
