@@ -15,7 +15,6 @@ export function buildCoverageChartStyle(
   deckStyle?: DeckStyleContext,
 ): CustomFigureStyleOptions {
   return {
-    scale: config.s.scale,
     seriesColorFunc: getCoverageSeriesColorFunc(),
     text: getTextStyle(config, deckStyle),
     panes: { nCols: config.s.nColsInCellDisplay },

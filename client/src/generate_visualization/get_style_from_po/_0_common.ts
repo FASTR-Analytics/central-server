@@ -30,7 +30,6 @@ const _InternationalInter_800: FontInfo = {
 };
 
 export const GLOBAL_STYLE_OPTIONS: CustomStyleOptions = {
-  scale: 1,
   baseText: {
     font: { fontFamily: "International Inter", weight: 400, italic: false },
     fontSize: 24,

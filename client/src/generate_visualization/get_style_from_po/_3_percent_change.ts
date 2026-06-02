@@ -23,7 +23,6 @@ export function buildPercentChangeChartStyle(
   const inverted = config.s.specialBarChartInverted;
 
   return {
-    scale: config.s.scale,
     seriesColorFunc: getStandardSeriesColorFunc(config),
     text: getTextStyle(config, deckStyle),
     panes: { nCols: config.s.nColsInCellDisplay },

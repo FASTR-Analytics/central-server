@@ -51,7 +51,6 @@ export function buildScorecardStyle(
   const metadataById = new Map(indicatorMetadata.map((m) => [m.id, m]));
 
   return {
-    scale: config.s.scale,
     text: getTextStyle(config, deckStyle),
     surrounds: { legendPosition: config.s.hideLegend ? "none" : undefined },
     grid: { showGrid: false },

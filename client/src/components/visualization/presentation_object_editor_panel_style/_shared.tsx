@@ -14,21 +14,6 @@ type SharedTopProps = {
 export function SharedControlsTop(p: SharedTopProps) {
   return (
     <>
-      <Slider
-        label="Scale"
-        min={0.1}
-        max={5}
-        step={0.1}
-        value={p.tempConfig.s.scale}
-        onChange={(v) => p.setTempConfig("s", "scale", v)}
-        fullWidth
-        showValueInLabel
-        ticks={{
-          major: [0.1, 1, 2, 3, 4, 5],
-          showLabels: true,
-          labelFormatter: toNum0,
-        }}
-      />
       <Show when={p.usingCells()}>
         <LabelHolder label="Number of grid columns">
           <div class="ui-spy-sm">

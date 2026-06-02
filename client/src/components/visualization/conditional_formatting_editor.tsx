@@ -57,10 +57,10 @@ export function ConditionalFormattingEditor(p: Props) {
   return (
     <div class="ui-spy-sm">
       <ButtonGroup<Mode>
-        options={[
-          { value: "none", label: "Off" },
-          { value: "scale", label: "Scale" },
-          { value: "thresholds", label: "Thresholds" },
+        items={[
+          { id: "none", label: "Off" },
+          { id: "scale", label: "Scale" },
+          { id: "thresholds", label: "Thresholds" },
         ]}
         value={cf().type}
         onChange={handleModeChange}

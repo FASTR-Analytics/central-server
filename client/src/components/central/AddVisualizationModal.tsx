@@ -231,14 +231,14 @@ type Step1Props = {
 function _Step1Metric(p: Step1Props) {
   const [selectedModule, setSelectedModule] = createSignal<string | "all">("all");
 
-  type SidebarOption = { value: string | "all"; label: string; count: number };
+  type SidebarMeta = { count: number };
 
-  const sidebarOptions = createMemo((): SidebarOption[] => {
-    const all: SidebarOption = { value: "all", label: "All modules", count: p.allMetricCount };
-    const moduleOpts: SidebarOption[] = p.metricsByModule.map((mod) => ({
-      value: mod.moduleId,
+  const sidebarOptions = createMemo(() => {
+    const all = { id: "all" as string, label: "All modules", meta: { count: p.allMetricCount } };
+    const moduleOpts = p.metricsByModule.map((mod) => ({
+      id: mod.moduleId,
       label: mod.moduleId,
-      count: mod.metricGroups.reduce((s, g) => s + g.variants.length, 0),
+      meta: { count: mod.metricGroups.reduce((s, g) => s + g.variants.length, 0) },
     }));
     return [all, ...moduleOpts];
   });
@@ -257,15 +257,15 @@ function _Step1Metric(p: Step1Props) {
         panelChildren={
           <div class="border-base-300 ui-pad h-full w-56 border-r">
             <SelectList
-              options={sidebarOptions()}
+              items={sidebarOptions()}
               value={selectedModule()}
               onChange={setSelectedModule}
               fullWidth
-              renderOption={(opt) => (
+              renderItem={(item) => (
                 <div class="flex items-center justify-between gap-2">
-                  <span class="truncate">{(opt as SidebarOption).label}</span>
+                  <span class="truncate">{item.label as string}</span>
                   <span class="text-base-content/40 shrink-0 text-xs">
-                    {(opt as SidebarOption).count}
+                    {(item.meta as SidebarMeta | undefined)?.count}
                   </span>
                 </div>
               )}

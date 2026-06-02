@@ -34,7 +34,6 @@ export function buildStandardStyle(
   const showAreas = c === "lines-area";
 
   return {
-    scale: config.s.scale,
     seriesColorFunc: getStandardSeriesColorFunc(config),
     text: getTextStyle(config, deckStyle),
     surrounds: {

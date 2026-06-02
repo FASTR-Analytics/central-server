@@ -23,7 +23,6 @@ export function buildDisruptionsChartStyle(
   const inverted = config.s.diffInverted;
 
   return {
-    scale: config.s.scale,
     seriesColorFunc: getDisruptionsSeriesColorFunc(inverted),
     text: getTextStyle(config, deckStyle),
     panes: {

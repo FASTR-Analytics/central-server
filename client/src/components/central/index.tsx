@@ -18,9 +18,9 @@ export function CentralMain(p: Props) {
   const [tab, setTab] = createSignal<Tab>("projects");
 
   const tabOptions = () => [
-    { value: "projects" as Tab, label: "Projects", iconName: "folder" as const },
+    { id: "projects" as Tab, label: "Projects", iconName: "folder" as const },
     ...(p.globalUser.canConfigureUsers
-      ? [{ value: "users" as Tab, label: "Users", iconName: "users" as const }]
+      ? [{ id: "users" as Tab, label: "Users", iconName: "users" as const }]
       : []),
   ];
 
@@ -35,9 +35,9 @@ export function CentralMain(p: Props) {
     return s.data.find((pr) => pr.id === selectedProjectId());
   };
 
-  function handleTabChange(t: Tab | undefined) {
-    if (!t) return;
-    setTab(t);
+  function handleTabChange(v: string | undefined) {
+    if (!v) return;
+    setTab(v as Tab);
     setSelectedProjectId(null);
   }
 
@@ -57,7 +57,7 @@ export function CentralMain(p: Props) {
                   <ButtonGroup
                     value={tab()}
                     onChange={handleTabChange}
-                    options={tabOptions()}
+                    items={tabOptions()}
                     itemWidth="115px"
                   />
                 </Show>

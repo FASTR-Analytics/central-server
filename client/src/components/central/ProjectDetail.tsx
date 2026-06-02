@@ -12,7 +12,6 @@ import {
   type TableColumn,
   type AlertComponentProps,
   type SelectOption,
-  getTabs,
   openComponent,
   openConfirm,
   timActionButton,
@@ -74,20 +73,19 @@ export function ProjectDetail(p: Props) {
     return s.data.thisUserPermissions;
   });
 
-  const tabs = getTabs(
-    [
-      { value: "data", label: "Data" },
-      { value: "visualizations", label: "Visualizations" },
-      { value: "settings", label: "Settings" },
-    ],
-    { onTabChange: () => setEditingPoId(undefined) },
-  );
+  type Tab = "data" | "visualizations" | "settings";
+  const [currentTab, setCurrentTab] = createSignal<Tab>("data");
 
-  const tabIcons = {
-    data: "databaseImport" as const,
-    visualizations: "chart" as const,
-    settings: "settings" as const,
-  };
+  const tabItems = [
+    { id: "data" as const, label: "Data", iconName: "databaseImport" as const },
+    { id: "visualizations" as const, label: "Visualizations", iconName: "chart" as const },
+    { id: "settings" as const, label: "Settings", iconName: "settings" as const },
+  ];
+
+  function handleTabChange(tab: Tab) {
+    setCurrentTab(tab);
+    setEditingPoId(undefined);
+  }
 
   const lockAction = timActionButton(
     async () => {
@@ -143,18 +141,19 @@ export function ProjectDetail(p: Props) {
         panelChildren={
           <div class="h-full border-r">
             <TabsNavigation
-              tabs={tabs}
+              items={tabItems}
+              value={currentTab()}
+              onChange={handleTabChange}
               vertical
               collapsible
               collapsed={navCollapsed()}
               onCollapsedChange={setNavCollapsed}
-              icons={tabIcons}
             />
           </div>
         }
       >
           <Switch>
-            <Match when={tabs.isTabActive("data")}>
+            <Match when={currentTab() === "data"}>
               <div class="ui-pad flex flex-col gap-6 overflow-auto">
                 <Show when={perms().can_configure_data}>
                   <_ImportPanel projectId={p.projectId} onImported={detailQuery.silentFetch} />
@@ -185,7 +184,7 @@ export function ProjectDetail(p: Props) {
               </div>
             </Match>
 
-            <Match when={tabs.isTabActive("visualizations")}>
+            <Match when={currentTab() === "visualizations"}>
               <Show
                 when={perms().can_view_visualizations}
                 fallback={
@@ -214,7 +213,7 @@ export function ProjectDetail(p: Props) {
               </Show>
             </Match>
 
-            <Match when={tabs.isTabActive("settings")}>
+            <Match when={currentTab() === "settings"}>
               <div class="ui-pad flex flex-col gap-6 overflow-auto">
                 <Show when={perms().can_configure_users}>
                   <StateHolderWrapper state={detailQuery.state()}>
