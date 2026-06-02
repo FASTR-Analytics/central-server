@@ -60,16 +60,14 @@ routesCentral.post("/import_from_source", requireHUser(), async (c) => {
     return c.json({ success: false, err: `Failed to reach ${sourceServerId}: ${String(error)}` }, 502);
   }
 
-  const result = await doImport({ ...exportPayload, targetProjectId }, c.var.globalUser.email);
-  if (!result.success) {
-    return c.json(result, (result.status ?? 500) as 400 | 404 | 409 | 500);
-  }
-
-  const projectDb = getPgConnectionFromCacheOrNew(targetProjectId, "READ_AND_WRITE");
+  // Fetch all rows before doImport so the auth token (short-lived Clerk JWT) is
+  // still valid. doImport can take tens of seconds for large countries, which
+  // would cause the token to expire before the rows fetches start.
   const ROWS_PAGE_SIZE = 20000;
+  const prefetchedRows = new Map<string, Record<string, unknown>[]>();
 
   for (const ro of exportPayload.resultsObjects) {
-    const tableName = getResultsObjectTableName(ro.id);
+    const rows: Record<string, unknown>[] = [];
     let offset = 0;
     while (true) {
       const rowsRes = await fetch(
@@ -84,10 +82,24 @@ routesCentral.post("/import_from_source", requireHUser(), async (c) => {
       if (!rowsJson.success || !rowsJson.data) {
         return c.json({ success: false, err: `Rows endpoint returned failure for results object ${ro.id}: ${JSON.stringify(rowsJson).slice(0, 200)}` }, 502);
       }
-      await insertRowsChunk(projectDb, tableName, rowsJson.data.rows, exportPayload.sourceInstanceId);
+      rows.push(...rowsJson.data.rows);
       if (!rowsJson.data.hasMore) break;
       offset += ROWS_PAGE_SIZE;
     }
+    prefetchedRows.set(ro.id, rows);
+  }
+
+  const result = await doImport({ ...exportPayload, targetProjectId }, c.var.globalUser.email);
+  if (!result.success) {
+    return c.json(result, (result.status ?? 500) as 400 | 404 | 409 | 500);
+  }
+
+  const projectDb = getPgConnectionFromCacheOrNew(targetProjectId, "READ_AND_WRITE");
+
+  for (const ro of exportPayload.resultsObjects) {
+    const tableName = getResultsObjectTableName(ro.id);
+    const rows = prefetchedRows.get(ro.id) ?? [];
+    await insertRowsChunk(projectDb, tableName, rows, exportPayload.sourceInstanceId);
   }
 
   return c.json(result);
