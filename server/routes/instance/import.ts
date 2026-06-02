@@ -70,7 +70,7 @@ export async function doImport(
           presentation_def_updated_at, presentation_def_git_ref,
           config_updated_at, last_run_at, last_run_git_ref
         ) VALUES (
-          ${m.id}, ${m.module_definition}, ${m.config_selections}, 'complete',
+          ${m.id}, ${m.module_definition ?? ""}, ${m.config_selections}, 'complete',
           ${m.compute_def_updated_at}, ${m.compute_def_git_ref},
           ${m.presentation_def_updated_at}, ${m.presentation_def_git_ref},
           ${m.config_updated_at}, ${m.last_run_at}, ${m.last_run_git_ref}
