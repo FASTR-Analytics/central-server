@@ -248,8 +248,12 @@ function _EditorActive(p: ActiveProps) {
       const m = p.metric;
       const cfg = unwrap(tempConfig);
 
+      const parsedPAE = (() => {
+        try { return m.postAggregationExpression ? JSON.parse(m.postAggregationExpression) : undefined; }
+        catch { return undefined; }
+      })();
       const fetchConfigResult = getFetchConfigFromPresentationObjectConfig(
-        { valueProps: JSON.parse(m.valueProps ?? "[]"), valueFunc: m.valueFunc, formatAs: m.formatAs } as any,
+        { valueProps: JSON.parse(m.valueProps ?? "[]"), valueFunc: m.valueFunc, formatAs: m.formatAs, postAggregationExpression: parsedPAE } as any,
         cfg,
       );
       if (!fetchConfigResult.success) return Promise.resolve({ success: true as const, data: null });
