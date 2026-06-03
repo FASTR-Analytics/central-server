@@ -11,6 +11,12 @@ import type {
 
 export type ServerEntry = { id: string; label: string; mode?: "central" };
 
+export type ImportProgressEvent =
+  | { type: "fetching"; roId: string; index: number; total: number; rowsFetched: number }
+  | { type: "importing" }
+  | { type: "done"; nResultsObjects: number; nRowsTotal: number }
+  | { type: "error"; err: string };
+
 export type ProjectMetric = {
   id: string;
   moduleId: string;
@@ -133,8 +139,8 @@ export const serverActions = {
       token: args.token,
     }),
 
-  importFromSource: (args: { sourceServerId: string; sourceProjectId: string; targetProjectId: string; token: string }) =>
-    apiFetch<{ nResultsObjects: number; nRowsTotal: number }>("/import_from_source", {
+  importFromSourceInit: (args: { sourceServerId: string; sourceProjectId: string; targetProjectId: string; token: string }) =>
+    apiFetch<{ jobId: string }>("/import_from_source", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

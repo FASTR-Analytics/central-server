@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { streamSSE } from "hono/streaming";
 import type { GlobalUser, CentralExportPayload } from "lib";
 import { requireHUser } from "../../middleware/auth.ts";
 import { doImport, insertRowsChunk } from "./import.ts";
@@ -6,6 +7,19 @@ import { getPgConnectionFromCacheOrNew, getResultsObjectTableName } from "../../
 import { _CENTRAL_SERVER_SECRET } from "../../exposed_env_vars.ts";
 
 type Env = { Variables: { globalUser: GlobalUser } };
+
+type ImportProgressEvent =
+  | { type: "fetching"; roId: string; index: number; total: number; rowsFetched: number }
+  | { type: "importing" }
+  | { type: "done"; nResultsObjects: number; nRowsTotal: number }
+  | { type: "error"; err: string };
+
+const pendingImports = new Map<string, {
+  authHeader: string;
+  sourceServerId: string;
+  sourceProjectId: string;
+  targetProjectId: string;
+}>();
 
 export const routesCentral = new Hono<Env>();
 
@@ -37,84 +51,122 @@ routesCentral.get("/central_reporting_projects/:sourceServerId", requireHUser(),
 
 routesCentral.post("/import_from_source", requireHUser(), async (c) => {
   const body = await c.req.json<{ sourceServerId: string; sourceProjectId: string; targetProjectId: string }>();
-  const { sourceServerId, sourceProjectId, targetProjectId } = body;
-
   const authHeader = c.req.header("Authorization");
   if (!authHeader) return c.json({ success: false, err: "No auth token" }, 401);
 
-  // Decode JWT payload to log expiry (no verification — just for diagnostics)
-  try {
-    const jwtPayload = JSON.parse(atob(authHeader.replace("Bearer ", "").split(".")[1]));
-    const expiresAt = new Date(jwtPayload.exp * 1000);
-    console.log(`[import] token expires at ${expiresAt.toISOString()} (in ${Math.round((expiresAt.getTime() - Date.now()) / 1000)}s)`);
-  } catch { /* non-fatal */ }
+  const jobId = crypto.randomUUID();
+  pendingImports.set(jobId, { authHeader, ...body });
 
-  const importStart = Date.now();
+  runImportJob(jobId);
 
-  let exportPayload: CentralExportPayload;
+  return c.json({ success: true, data: { jobId } });
+});
+
+routesCentral.get("/import_progress/:jobId", requireHUser(), async (c) => {
+  const jobId = c.req.param("jobId");
+  return streamSSE(c, async (stream) => {
+    const channel = new BroadcastChannel(`import:${jobId}`);
+    let resolve: (() => void) | null = null;
+    const queue: ImportProgressEvent[] = [];
+
+    channel.onmessage = (evt: MessageEvent<ImportProgressEvent>) => {
+      queue.push(evt.data);
+      resolve?.();
+    };
+
+    try {
+      while (true) {
+        while (queue.length > 0) {
+          const event = queue.shift()!;
+          await stream.writeSSE({ data: JSON.stringify(event) });
+          if (event.type === "done" || event.type === "error") return;
+        }
+        await new Promise<void>((r) => { resolve = r; });
+        resolve = null;
+      }
+    } finally {
+      channel.close();
+    }
+  });
+});
+
+async function runImportJob(jobId: string) {
+  const job = pendingImports.get(jobId);
+  if (!job) return;
+  pendingImports.delete(jobId);
+
+  const channel = new BroadcastChannel(`import:${jobId}`);
+  const send = (event: ImportProgressEvent) => channel.postMessage(event);
+
   try {
+    const { authHeader, sourceServerId, sourceProjectId, targetProjectId } = job;
+
     const exportResponse = await fetch(
       `https://${sourceServerId}.fastr-analytics.org/export_central/${sourceProjectId}`,
       { headers: { Authorization: authHeader } },
     );
     if (!exportResponse.ok) {
       const text = await exportResponse.text();
-      return c.json({ success: false, err: `Export failed (${exportResponse.status}): ${text}` }, 502);
+      send({ type: "error", err: `Export failed (${exportResponse.status}): ${text.slice(0, 200)}` });
+      return;
     }
     const exportJson = await exportResponse.json();
-    exportPayload = exportJson.data ?? exportJson;
+    const exportPayload: CentralExportPayload = exportJson.data ?? exportJson;
     if (!exportPayload || !Array.isArray(exportPayload.modules)) {
-      return c.json({ success: false, err: `Unexpected export response from ${sourceServerId}: ${JSON.stringify(exportPayload).slice(0, 300)}` }, 502);
+      send({ type: "error", err: `Unexpected export response from ${sourceServerId}: ${JSON.stringify(exportPayload).slice(0, 300)}` });
+      return;
     }
-    console.log(`[import] export metadata fetched in ${Date.now() - importStart}ms — ${exportPayload.resultsObjects.length} results objects`);
-  } catch (error) {
-    return c.json({ success: false, err: `Failed to reach ${sourceServerId}: ${String(error)}` }, 502);
-  }
 
-  // Fetch all rows before doImport so the auth token (short-lived Clerk JWT) is
-  // still valid. doImport can take tens of seconds for large countries, which
-  // would cause the token to expire before the rows fetches start.
-  const ROWS_PAGE_SIZE = 20000;
-  const prefetchedRows = new Map<string, Record<string, unknown>[]>();
+    const total = exportPayload.resultsObjects.length;
+    const prefetchedRows = new Map<string, Record<string, unknown>[]>();
+    const ROWS_PAGE_SIZE = 20000;
 
-  for (const ro of exportPayload.resultsObjects) {
-    const rows: Record<string, unknown>[] = [];
-    let offset = 0;
-    console.log(`[import] fetching rows for ${ro.id} at +${Date.now() - importStart}ms`);
-    while (true) {
-      const rowsRes = await fetch(
-        `https://${sourceServerId}.fastr-analytics.org/export_central/${sourceProjectId}/rows?ro_id=${encodeURIComponent(ro.id)}&offset=${offset}`,
-        { headers: { "X-Central-Secret": _CENTRAL_SERVER_SECRET } },
-      );
-      if (!rowsRes.ok) {
-        const text = await rowsRes.text().catch(() => "");
-        console.error(`[import] 401/error for ${ro.id} at +${Date.now() - importStart}ms`);
-        return c.json({ success: false, err: `Failed to fetch rows for results object ${ro.id} (${rowsRes.status}): ${text.slice(0, 200)}` }, 502);
+    for (let i = 0; i < total; i++) {
+      const ro = exportPayload.resultsObjects[i];
+      const rows: Record<string, unknown>[] = [];
+      let offset = 0;
+      while (true) {
+        const rowsRes = await fetch(
+          `https://${sourceServerId}.fastr-analytics.org/export_central/${sourceProjectId}/rows?ro_id=${encodeURIComponent(ro.id)}&offset=${offset}`,
+          { headers: { "X-Central-Secret": _CENTRAL_SERVER_SECRET } },
+        );
+        if (!rowsRes.ok) {
+          const text = await rowsRes.text().catch(() => "");
+          send({ type: "error", err: `Failed to fetch rows for ${ro.id} (${rowsRes.status}): ${text.slice(0, 200)}` });
+          return;
+        }
+        const rowsJson = await rowsRes.json() as { success: boolean; data?: { rows: Record<string, unknown>[]; hasMore: boolean } };
+        if (!rowsJson.success || !rowsJson.data) {
+          send({ type: "error", err: `Rows endpoint error for ${ro.id}: ${JSON.stringify(rowsJson).slice(0, 200)}` });
+          return;
+        }
+        rows.push(...rowsJson.data.rows);
+        if (!rowsJson.data.hasMore) break;
+        offset += ROWS_PAGE_SIZE;
       }
-      const rowsJson = await rowsRes.json() as { success: boolean; data?: { rows: Record<string, unknown>[]; hasMore: boolean } };
-      if (!rowsJson.success || !rowsJson.data) {
-        return c.json({ success: false, err: `Rows endpoint returned failure for results object ${ro.id}: ${JSON.stringify(rowsJson).slice(0, 200)}` }, 502);
-      }
-      rows.push(...rowsJson.data.rows);
-      if (!rowsJson.data.hasMore) break;
-      offset += ROWS_PAGE_SIZE;
+      prefetchedRows.set(ro.id, rows);
+      send({ type: "fetching", roId: ro.id, index: i + 1, total, rowsFetched: rows.length });
     }
-    console.log(`[import] ${ro.id}: ${rows.length} rows total`);
-    prefetchedRows.set(ro.id, rows);
+
+    send({ type: "importing" });
+
+    const result = await doImport({ ...exportPayload, targetProjectId }, "system");
+    if (!result.success) {
+      send({ type: "error", err: result.err });
+      return;
+    }
+
+    const projectDb = getPgConnectionFromCacheOrNew(targetProjectId, "READ_AND_WRITE");
+    for (const ro of exportPayload.resultsObjects) {
+      const tableName = getResultsObjectTableName(ro.id);
+      const rows = prefetchedRows.get(ro.id) ?? [];
+      await insertRowsChunk(projectDb, tableName, rows, exportPayload.sourceInstanceId);
+    }
+
+    send({ type: "done", nResultsObjects: result.data.nResultsObjects, nRowsTotal: result.data.nRowsTotal });
+  } catch (err) {
+    send({ type: "error", err: err instanceof Error ? err.message : String(err) });
+  } finally {
+    channel.close();
   }
-
-  const result = await doImport({ ...exportPayload, targetProjectId }, c.var.globalUser.email);
-  if (!result.success) {
-    return c.json(result, (result.status ?? 500) as 400 | 404 | 409 | 500);
-  }
-
-  const projectDb = getPgConnectionFromCacheOrNew(targetProjectId, "READ_AND_WRITE");
-
-  for (const ro of exportPayload.resultsObjects) {
-    const tableName = getResultsObjectTableName(ro.id);
-    const rows = prefetchedRows.get(ro.id) ?? [];
-    await insertRowsChunk(projectDb, tableName, rows, exportPayload.sourceInstanceId);
-  }
-
-  return c.json(result);
-});
+}

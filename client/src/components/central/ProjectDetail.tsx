@@ -18,6 +18,8 @@ import {
   timActionForm,
   timQuery,
 } from "panther";
+import { _SERVER_HOST } from "~/server_actions";
+import type { ImportProgressEvent } from "~/server_actions";
 import { For, Match, Show, Switch, createMemo, createSignal } from "solid-js";
 import type {
   CentralReportingProject,
@@ -529,24 +531,61 @@ function _ImportPanel(p: ImportPanelProps) {
     "Loading projects...",
   );
 
-  const importAction = timActionButton(
-    async () => {
-      const sId = selectedServerId();
-      const pId = selectedProjectId();
-      if (!sId || !pId) return { success: false as const, err: "Select a server and project" };
-      const token = (await clerk.session?.getToken()) ?? "";
-      return serverActions.importFromSource({
-        sourceServerId: sId,
-        sourceProjectId: pId,
-        targetProjectId: p.projectId,
-        token,
-      });
-    },
-    async () => {
-      setSelectedProjectId("");
-      await p.onImported();
-    },
-  );
+  const [importPhase, setImportPhase] = createSignal<"idle" | "fetching" | "importing" | "done" | "error">("idle");
+  const [importProgress, setImportProgress] = createSignal({ current: 0, total: 0 });
+  const [importError, setImportError] = createSignal("");
+
+  async function runImport() {
+    const sId = selectedServerId();
+    const pId = selectedProjectId();
+    if (!sId || !pId) return;
+
+    setImportPhase("fetching");
+    setImportProgress({ current: 0, total: 0 });
+    setImportError("");
+
+    const token = (await clerk.session?.getToken()) ?? "";
+    const initRes = await serverActions.importFromSourceInit({
+      sourceServerId: sId,
+      sourceProjectId: pId,
+      targetProjectId: p.projectId,
+      token,
+    });
+    if (!initRes.success) {
+      setImportError(initRes.err);
+      setImportPhase("error");
+      return;
+    }
+
+    const { jobId } = initRes.data;
+    const evtSource = new EventSource(`${_SERVER_HOST}/import_progress/${jobId}`, { withCredentials: true });
+
+    evtSource.onmessage = async (evt) => {
+      const event = JSON.parse(evt.data) as ImportProgressEvent;
+      if (event.type === "fetching") {
+        setImportPhase("fetching");
+        setImportProgress({ current: event.index, total: event.total });
+      } else if (event.type === "importing") {
+        setImportPhase("importing");
+      } else if (event.type === "done") {
+        evtSource.close();
+        setSelectedProjectId("");
+        try { await p.onImported(); } finally { setImportPhase("idle"); }
+      } else if (event.type === "error") {
+        evtSource.close();
+        setImportError(event.err);
+        setImportPhase("error");
+      }
+    };
+
+    evtSource.onerror = () => {
+      evtSource.close();
+      if (importPhase() !== "idle") {
+        setImportError("Connection closed unexpectedly");
+        setImportPhase("error");
+      }
+    };
+  }
 
   const serverOptions = createMemo((): SelectOption<string>[] => {
     const s = serversQuery.state();
@@ -588,15 +627,50 @@ function _ImportPanel(p: ImportPanelProps) {
           onChange={setSelectedProjectId}
           placeholder={selectedServerId() ? "Select project..." : "Select server first"}
         />
-        <Button
-          intent="primary"
-          state={importAction.state()}
-          onClick={importAction.click}
-          size="sm"
-          disabled={!selectedServerId() || !selectedProjectId()}
+        <Show
+          when={importPhase() === "idle" || importPhase() === "error"}
+          fallback={
+            <div class="flex flex-col gap-1 min-w-48">
+              <div class="text-base-content/60 text-xs">
+                <Switch>
+                  <Match when={importPhase() === "fetching"}>
+                    Fetching data… ({importProgress().current}/{importProgress().total})
+                  </Match>
+                  <Match when={importPhase() === "importing"}>
+                    Saving…
+                  </Match>
+                  <Match when={importPhase() === "done"}>
+                    Done
+                  </Match>
+                </Switch>
+              </div>
+              <div class="h-1.5 w-full rounded-full bg-base-300 overflow-hidden">
+                <div
+                  class="h-full bg-primary transition-all duration-300"
+                  style={{
+                    width: importPhase() === "importing" || importPhase() === "done"
+                      ? "100%"
+                      : `${importProgress().total ? (importProgress().current / importProgress().total) * 100 : 0}%`,
+                  }}
+                />
+              </div>
+            </div>
+          }
         >
-          Import
-        </Button>
+          <div class="flex flex-col gap-1">
+            <Show when={importPhase() === "error"}>
+              <div class="text-error text-xs">{importError()}</div>
+            </Show>
+            <Button
+              intent="primary"
+              onClick={runImport}
+              size="sm"
+              disabled={!selectedServerId() || !selectedProjectId()}
+            >
+              Import
+            </Button>
+          </div>
+        </Show>
       </div>
     </div>
   );
