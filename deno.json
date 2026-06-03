@@ -31,7 +31,7 @@
     "build:client": "cd client && npm run build",
     "typecheck": "deno check main.ts && echo '✓ Server typecheck passed' && sh -c 'cd client && npm run typecheck' && echo '✓ Client typecheck passed'",
     "check": "deno check main.ts",
-    "start": "deno run --allow-all --env-file main.ts",
+    "start": "deno run --allow-all --env-file --unstable-broadcast-channel main.ts",
     "lint": "deno lint",
     "fmt": "deno fmt"
   }
