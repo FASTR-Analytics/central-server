@@ -41,6 +41,15 @@ routesCentral.post("/import_from_source", requireHUser(), async (c) => {
   const authHeader = c.req.header("Authorization");
   if (!authHeader) return c.json({ success: false, err: "No auth token" }, 401);
 
+  // Decode JWT payload to log expiry (no verification — just for diagnostics)
+  try {
+    const jwtPayload = JSON.parse(atob(authHeader.replace("Bearer ", "").split(".")[1]));
+    const expiresAt = new Date(jwtPayload.exp * 1000);
+    console.log(`[import] token expires at ${expiresAt.toISOString()} (in ${Math.round((expiresAt.getTime() - Date.now()) / 1000)}s)`);
+  } catch { /* non-fatal */ }
+
+  const importStart = Date.now();
+
   let exportPayload: CentralExportPayload;
   try {
     const exportResponse = await fetch(
@@ -56,6 +65,7 @@ routesCentral.post("/import_from_source", requireHUser(), async (c) => {
     if (!exportPayload || !Array.isArray(exportPayload.modules)) {
       return c.json({ success: false, err: `Unexpected export response from ${sourceServerId}: ${JSON.stringify(exportPayload).slice(0, 300)}` }, 502);
     }
+    console.log(`[import] export metadata fetched in ${Date.now() - importStart}ms — ${exportPayload.resultsObjects.length} results objects`);
   } catch (error) {
     return c.json({ success: false, err: `Failed to reach ${sourceServerId}: ${String(error)}` }, 502);
   }
@@ -69,6 +79,7 @@ routesCentral.post("/import_from_source", requireHUser(), async (c) => {
   for (const ro of exportPayload.resultsObjects) {
     const rows: Record<string, unknown>[] = [];
     let offset = 0;
+    console.log(`[import] fetching rows for ${ro.id} at +${Date.now() - importStart}ms`);
     while (true) {
       const rowsRes = await fetch(
         `https://${sourceServerId}.fastr-analytics.org/export_central/${sourceProjectId}/rows?ro_id=${encodeURIComponent(ro.id)}&offset=${offset}`,
@@ -76,6 +87,7 @@ routesCentral.post("/import_from_source", requireHUser(), async (c) => {
       );
       if (!rowsRes.ok) {
         const text = await rowsRes.text().catch(() => "");
+        console.error(`[import] 401/error for ${ro.id} at +${Date.now() - importStart}ms`);
         return c.json({ success: false, err: `Failed to fetch rows for results object ${ro.id} (${rowsRes.status}): ${text.slice(0, 200)}` }, 502);
       }
       const rowsJson = await rowsRes.json() as { success: boolean; data?: { rows: Record<string, unknown>[]; hasMore: boolean } };
@@ -86,6 +98,7 @@ routesCentral.post("/import_from_source", requireHUser(), async (c) => {
       if (!rowsJson.data.hasMore) break;
       offset += ROWS_PAGE_SIZE;
     }
+    console.log(`[import] ${ro.id}: ${rows.length} rows total`);
     prefetchedRows.set(ro.id, rows);
   }
 
