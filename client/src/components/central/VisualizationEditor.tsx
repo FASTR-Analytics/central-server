@@ -21,9 +21,8 @@ import type {
 } from "platform-lib";
 import {
   getFetchConfigFromPresentationObjectConfig,
-  parsePresentationObjectConfig,
 } from "platform-lib";
-import { isCentralDisaggregationOption } from "~/disaggregation_helpers";
+import { isCentralDisaggregationOption, parseCentralPresentationObjectConfig } from "~/disaggregation_helpers";
 import {
   serverActions,
   type ProjectMetric,
@@ -109,7 +108,7 @@ function _EditorSetup(p: SetupProps) {
     const m = p.metrics.find((m) => m.id === p.poDetail!.metricId);
     if (!m) return null;
     try {
-      const c = parsePresentationObjectConfig(JSON.stringify(p.poDetail.config));
+      const c = parseCentralPresentationObjectConfig(JSON.stringify(p.poDetail.config));
       return { m, c };
     } catch {
       return null;
@@ -132,7 +131,7 @@ function _EditorSetup(p: SetupProps) {
       return;
     }
     try {
-      const c = parsePresentationObjectConfig(JSON.stringify(result.config));
+      const c = parseCentralPresentationObjectConfig(JSON.stringify(result.config));
       setReadyConfig({ m: result.metric, c });
     } catch (e) {
       console.error("Failed to parse config from modal:", e);

@@ -9,9 +9,9 @@ import { createMemo, For, Show } from "solid-js";
 import type { PeriodOption } from "platform-lib";
 import {
   getFetchConfigFromPresentationObjectConfig,
-  parsePresentationObjectConfig,
   type PresentationObjectConfig,
 } from "platform-lib";
+import { parseCentralPresentationObjectConfig } from "~/disaggregation_helpers";
 import { serverActions, type ProjectMetric, type PresentationObjectSummary } from "~/server_actions";
 import { getFigureInputsFromPresentationObject } from "~/generate_visualization/get_figure_inputs_from_po";
 
@@ -89,7 +89,7 @@ function _VizPreviewCard(p: CardProps) {
 
     let config: PresentationObjectConfig;
     try {
-      config = parsePresentationObjectConfig(JSON.stringify(detail.data.config));
+      config = parseCentralPresentationObjectConfig(JSON.stringify(detail.data.config));
     } catch {
       return { success: false as const, err: "Invalid config" };
     }
