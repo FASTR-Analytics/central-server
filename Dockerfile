@@ -19,4 +19,4 @@ RUN mkdir /app/databases
 ENV IS_PRODUCTION=true
 ENV ASSETS_DIR_PATH=/app/assets
 
-CMD ["run", "-A", "main.ts"]
+CMD ["run", "-A", "--unstable-broadcast-channel", "main.ts"]
