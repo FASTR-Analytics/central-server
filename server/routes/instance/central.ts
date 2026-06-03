@@ -3,6 +3,7 @@ import type { GlobalUser, CentralExportPayload } from "lib";
 import { requireHUser } from "../../middleware/auth.ts";
 import { doImport, insertRowsChunk } from "./import.ts";
 import { getPgConnectionFromCacheOrNew, getResultsObjectTableName } from "../../db/mod.ts";
+import { _CENTRAL_SERVER_SECRET } from "../../exposed_env_vars.ts";
 
 type Env = { Variables: { globalUser: GlobalUser } };
 
@@ -83,7 +84,7 @@ routesCentral.post("/import_from_source", requireHUser(), async (c) => {
     while (true) {
       const rowsRes = await fetch(
         `https://${sourceServerId}.fastr-analytics.org/export_central/${sourceProjectId}/rows?ro_id=${encodeURIComponent(ro.id)}&offset=${offset}`,
-        { headers: { Authorization: authHeader } },
+        { headers: { "X-Central-Secret": _CENTRAL_SERVER_SECRET } },
       );
       if (!rowsRes.ok) {
         const text = await rowsRes.text().catch(() => "");

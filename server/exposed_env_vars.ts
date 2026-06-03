@@ -20,3 +20,5 @@ export const _DATABASE_FOLDER = Deno.env.get("DATABASE_FOLDER") ?? "central";
 export const _START_TIME = new Date().toISOString();
 
 export const _BYPASS_AUTH = !!Deno.env.get("BYPASS_AUTH") && !_IS_PRODUCTION;
+
+export const _CENTRAL_SERVER_SECRET = Deno.env.get("CENTRAL_SERVER_SECRET") ?? "";
