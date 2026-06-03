@@ -16,8 +16,8 @@ import {
   get_PRESENTATION_SELECT_OPTIONS,
   getDisaggregationLabel,
   getStartingConfigForPresentationObject,
-  isDisaggregationOption,
 } from "platform-lib";
+import { isCentralDisaggregationOption } from "~/disaggregation_helpers";
 import { type ProjectMetric } from "~/server_actions";
 
 export type AddVisualizationResult = {
@@ -119,10 +119,10 @@ export function AddVisualizationModal(
     if (!type) return;
 
     const requiredSet = new Set(
-      (JSON.parse(metric.requiredDisaggregationOptions ?? "[]") as string[]).filter(isDisaggregationOption),
+      (JSON.parse(metric.requiredDisaggregationOptions ?? "[]") as string[]).filter(isCentralDisaggregationOption),
     );
     const available = (JSON.parse(metric.availableDisaggregationOptions ?? "[]") as string[]).filter(
-      isDisaggregationOption,
+      isCentralDisaggregationOption,
     );
     const allValues = [...new Set([...requiredSet, ...available])];
     const allDisOpts = allValues.map((d) => ({ value: d, isRequired: requiredSet.has(d) }));
@@ -384,10 +384,10 @@ function _Step2Configure(p: Step2Props) {
   const disOpts = createMemo(() => {
     if (!p.metric) return [];
     const requiredSet = new Set(
-      (JSON.parse(p.metric.requiredDisaggregationOptions ?? "[]") as string[]).filter(isDisaggregationOption),
+      (JSON.parse(p.metric.requiredDisaggregationOptions ?? "[]") as string[]).filter(isCentralDisaggregationOption),
     );
     const available = (JSON.parse(p.metric.availableDisaggregationOptions ?? "[]") as string[]).filter(
-      isDisaggregationOption,
+      isCentralDisaggregationOption,
     );
     const allValues = [...new Set([...requiredSet, ...available])];
     return allValues.map((d) => ({ value: d, isRequired: requiredSet.has(d) }));

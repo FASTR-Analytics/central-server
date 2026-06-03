@@ -134,6 +134,7 @@ function getReasonMessage(reason: IneffectiveReason): string {
 }
 
 function getDisplayDisaggregationLabel(disOpt: DisaggregationOption): string {
+  if ((disOpt as string) === "admin_area_1") return "Country";
   return getDisaggregationLabel(disOpt, {}).en;
 }
 

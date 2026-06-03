@@ -21,9 +21,9 @@ import type {
 } from "platform-lib";
 import {
   getFetchConfigFromPresentationObjectConfig,
-  isDisaggregationOption,
   parsePresentationObjectConfig,
 } from "platform-lib";
+import { isCentralDisaggregationOption } from "~/disaggregation_helpers";
 import {
   serverActions,
   type ProjectMetric,
@@ -175,10 +175,10 @@ function _EditorActive(p: ActiveProps) {
 
   const poDetailForPanel: PlatformPODetail = (() => {
     const requiredSet = new Set(
-      (JSON.parse(p.metric.requiredDisaggregationOptions ?? "[]") as string[]).filter(isDisaggregationOption),
+      (JSON.parse(p.metric.requiredDisaggregationOptions ?? "[]") as string[]).filter(isCentralDisaggregationOption),
     );
     const available = (JSON.parse(p.metric.availableDisaggregationOptions ?? "[]") as string[]).filter(
-      isDisaggregationOption,
+      isCentralDisaggregationOption,
     );
     const allValues = [...new Set([...requiredSet, ...available])];
     const disOpts = allValues.map((d) => ({ value: d, isRequired: requiredSet.has(d) }));

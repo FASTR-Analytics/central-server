@@ -25,6 +25,7 @@ import { For, Match, Show, Switch, createMemo, createSignal } from "solid-js";
 import { SetStoreFunction } from "solid-js/store";
 
 function getDisplayDisaggregationLabel(disOpt: DisaggregationOption): string {
+  if ((disOpt as string) === "admin_area_1") return "Country";
   return getDisaggregationLabel(disOpt, {}).en;
 }
 
