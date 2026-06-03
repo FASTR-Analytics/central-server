@@ -39,7 +39,7 @@ import {
 import { serverActions } from "~/server_actions";
 import { clerk } from "~/components/LoggedInWrapper";
 import { VisualizationsList } from "~/components/central/VisualizationsList";
-import { VisualizationEditor } from "~/components/central/VisualizationEditor";
+import { VisualizationEditorEdit, VisualizationEditorCreate } from "~/components/central/VisualizationEditor";
 
 type Props = {
   projectId: string;
@@ -196,12 +196,19 @@ export function ProjectDetail(p: Props) {
                 }
               >
                 <Switch>
-                  <Match when={editingPoId() !== undefined}>
-                    <VisualizationEditor
+                  <Match when={typeof editingPoId() === "string"}>
+                    <VisualizationEditorEdit
                       projectId={p.projectId}
-                      poId={editingPoId()!}
+                      poId={editingPoId() as string}
                       onClose={() => setEditingPoId(undefined)}
-                      onSaved={(newId) => setEditingPoId(newId ?? undefined)}
+                      onSaved={() => setEditingPoId(undefined)}
+                    />
+                  </Match>
+                  <Match when={editingPoId() === null}>
+                    <VisualizationEditorCreate
+                      projectId={p.projectId}
+                      onClose={() => setEditingPoId(undefined)}
+                      onSaved={(newId: string) => setEditingPoId(newId)}
                     />
                   </Match>
                   <Match when={true}>

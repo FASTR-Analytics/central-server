@@ -36,92 +36,102 @@ import {
   type AddVisualizationResult,
 } from "~/components/central/AddVisualizationModal";
 
-type Props = {
+// ─── Edit ─────────────────────────────────────────────────────────────────────
+
+type EditProps = {
   projectId: string;
-  poId: string | null;
+  poId: string;
   onClose: () => void;
-  onSaved: (newId?: string) => void;
+  onSaved: () => void;
 };
 
-export function VisualizationEditor(p: Props) {
-  const metricsQuery = timQuery(
-    () => serverActions.getProjectMetrics({ projectId: p.projectId }),
-    "Loading metrics...",
-  );
+export function VisualizationEditorEdit(p: EditProps) {
+  type CombinedData = {
+    poDetail: CentralPODetail;
+    metric: ProjectMetric;
+    config: PresentationObjectConfig;
+  };
 
-  const poQuery = timQuery(
-    () =>
-      p.poId
-        ? serverActions.getPresentationObject({ projectId: p.projectId, id: p.poId })
-        : Promise.resolve({ success: false as const, err: "No PO" }),
-    "Loading...",
-  );
+  const query = timQuery<CombinedData>(async () => {
+    const [metricsRes, poRes] = await Promise.all([
+      serverActions.getProjectMetrics({ projectId: p.projectId }),
+      serverActions.getPresentationObject({ projectId: p.projectId, id: p.poId }),
+    ]);
+    if (!metricsRes.success) return metricsRes;
+    if (!poRes.success) return poRes;
+    const metric = metricsRes.data.find((m) => m.id === poRes.data.metricId);
+    if (!metric) return { success: false, err: "Metric not found" } as const;
+    try {
+      const config = parseCentralPresentationObjectConfig(JSON.stringify(poRes.data.config));
+      return { success: true, data: { poDetail: poRes.data, metric, config } } as const;
+    } catch {
+      return { success: false, err: "Invalid config" } as const;
+    }
+  }, "Loading...");
 
   return (
     <div class="flex h-full w-full min-w-0 flex-col">
-      <StateHolderWrapper state={metricsQuery.state()}>
-        {(metrics: ProjectMetric[]) => (
-          <Show
-            when={p.poId !== null}
-            fallback={
-              <_EditorSetup
-                projectId={p.projectId}
-                poId={null}
-                poDetail={null}
-                metrics={metrics}
-                onClose={p.onClose}
-                onSaved={p.onSaved}
-              />
-            }
-          >
-            <StateHolderWrapper state={poQuery.state()}>
-              {(poDetail: CentralPODetail) => (
-                <_EditorSetup
-                  projectId={p.projectId}
-                  poId={p.poId!}
-                  poDetail={poDetail}
-                  metrics={metrics}
-                  onClose={p.onClose}
-                  onSaved={p.onSaved}
-                />
-              )}
-            </StateHolderWrapper>
-          </Show>
+      <StateHolderWrapper state={query.state()}>
+        {(data: CombinedData) => (
+          <_EditorActive
+            projectId={p.projectId}
+            poId={p.poId}
+            metric={data.metric}
+            initialLabel={data.poDetail.label}
+            initialConfig={data.config}
+            onClose={p.onClose}
+            onSaved={() => p.onSaved()}
+          />
         )}
       </StateHolderWrapper>
     </div>
   );
 }
 
-type SetupProps = {
+// ─── Create ───────────────────────────────────────────────────────────────────
+
+type CreateProps = {
   projectId: string;
-  poId: string | null;
-  poDetail: CentralPODetail | null;
-  metrics: ProjectMetric[];
   onClose: () => void;
-  onSaved: (newId?: string) => void;
+  onSaved: (newId: string) => void;
 };
 
-function _EditorSetup(p: SetupProps) {
-  const initReadyConfig = (() => {
-    if (!p.poDetail) return null;
-    const m = p.metrics.find((m) => m.id === p.poDetail!.metricId);
-    if (!m) return null;
-    try {
-      const c = parseCentralPresentationObjectConfig(JSON.stringify(p.poDetail.config));
-      return { m, c };
-    } catch {
-      return null;
-    }
-  })();
+export function VisualizationEditorCreate(p: CreateProps) {
+  const metricsQuery = timQuery(
+    () => serverActions.getProjectMetrics({ projectId: p.projectId }),
+    "Loading metrics...",
+  );
 
+  return (
+    <div class="flex h-full w-full min-w-0 flex-col">
+      <StateHolderWrapper state={metricsQuery.state()}>
+        {(metrics: ProjectMetric[]) => (
+          <_CreateWithMetrics
+            projectId={p.projectId}
+            metrics={metrics}
+            onClose={p.onClose}
+            onSaved={p.onSaved}
+          />
+        )}
+      </StateHolderWrapper>
+    </div>
+  );
+}
+
+type CreateWithMetricsProps = {
+  projectId: string;
+  metrics: ProjectMetric[];
+  onClose: () => void;
+  onSaved: (newId: string) => void;
+};
+
+function _CreateWithMetrics(p: CreateWithMetricsProps) {
   const [readyConfig, setReadyConfig] = createSignal<{
-    m: ProjectMetric;
-    c: PresentationObjectConfig;
-  } | null>(initReadyConfig);
+    metric: ProjectMetric;
+    config: PresentationObjectConfig;
+  } | null>(null);
 
   onMount(async () => {
-    if (p.poId !== null) return;
     const result = await openComponent<AddVisualizationModalProps, AddVisualizationResult>({
       element: AddVisualizationModal,
       props: { metrics: p.metrics },
@@ -131,8 +141,8 @@ function _EditorSetup(p: SetupProps) {
       return;
     }
     try {
-      const c = parseCentralPresentationObjectConfig(JSON.stringify(result.config));
-      setReadyConfig({ m: result.metric, c });
+      const config = parseCentralPresentationObjectConfig(JSON.stringify(result.config));
+      setReadyConfig({ metric: result.metric, config });
     } catch (e) {
       console.error("Failed to parse config from modal:", e);
       p.onClose();
@@ -144,17 +154,19 @@ function _EditorSetup(p: SetupProps) {
       {(ready) => (
         <_EditorActive
           projectId={p.projectId}
-          poId={p.poId}
-          metric={ready.m}
-          initialLabel={p.poDetail?.label ?? ""}
-          initialConfig={ready.c}
+          poId={null}
+          metric={ready.metric}
+          initialLabel=""
+          initialConfig={ready.config}
           onClose={p.onClose}
-          onSaved={p.onSaved}
+          onSaved={(newId) => { if (newId) p.onSaved(newId); }}
         />
       )}
     </Show>
   );
 }
+
+// ─── Active Editor (shared) ───────────────────────────────────────────────────
 
 type ActiveProps = {
   projectId: string;
