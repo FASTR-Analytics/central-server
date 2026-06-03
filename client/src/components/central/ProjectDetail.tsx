@@ -531,7 +531,7 @@ function _ImportPanel(p: ImportPanelProps) {
     "Loading projects...",
   );
 
-  const [importPhase, setImportPhase] = createSignal<"idle" | "fetching" | "importing" | "done" | "error">("idle");
+  const [importPhase, setImportPhase] = createSignal<"idle" | "fetching" | "importing" | "inserting" | "done" | "error">("idle");
   const [importProgress, setImportProgress] = createSignal({ current: 0, total: 0 });
   const [importError, setImportError] = createSignal("");
 
@@ -567,6 +567,9 @@ function _ImportPanel(p: ImportPanelProps) {
         setImportProgress({ current: event.index, total: event.total });
       } else if (event.type === "importing") {
         setImportPhase("importing");
+      } else if (event.type === "inserting") {
+        setImportPhase("inserting");
+        setImportProgress({ current: event.index, total: event.total });
       } else if (event.type === "done") {
         evtSource.close();
         setSelectedProjectId("");
@@ -638,6 +641,9 @@ function _ImportPanel(p: ImportPanelProps) {
                   </Match>
                   <Match when={importPhase() === "importing"}>
                     Saving…
+                  </Match>
+                  <Match when={importPhase() === "inserting"}>
+                    Saving… ({importProgress().current}/{importProgress().total})
                   </Match>
                   <Match when={importPhase() === "done"}>
                     Done

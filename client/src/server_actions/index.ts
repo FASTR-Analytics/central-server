@@ -14,6 +14,7 @@ export type ServerEntry = { id: string; label: string; mode?: "central" };
 export type ImportProgressEvent =
   | { type: "fetching"; roId: string; index: number; total: number; rowsFetched: number }
   | { type: "importing" }
+  | { type: "inserting"; index: number; total: number }
   | { type: "done"; nResultsObjects: number; nRowsTotal: number }
   | { type: "error"; err: string };
 

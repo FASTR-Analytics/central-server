@@ -11,6 +11,7 @@ type Env = { Variables: { globalUser: GlobalUser } };
 type ImportProgressEvent =
   | { type: "fetching"; roId: string; index: number; total: number; rowsFetched: number }
   | { type: "importing" }
+  | { type: "inserting"; index: number; total: number }
   | { type: "done"; nResultsObjects: number; nRowsTotal: number }
   | { type: "error"; err: string };
 
@@ -157,16 +158,21 @@ async function runImportJob(jobId: string) {
     }
 
     const projectDb = getPgConnectionFromCacheOrNew(targetProjectId, "READ_AND_WRITE");
-    for (const ro of exportPayload.resultsObjects) {
+    const insertTotal = exportPayload.resultsObjects.length;
+    for (let i = 0; i < insertTotal; i++) {
+      const ro = exportPayload.resultsObjects[i];
       const tableName = getResultsObjectTableName(ro.id);
       const rows = prefetchedRows.get(ro.id) ?? [];
       await insertRowsChunk(projectDb, tableName, rows, exportPayload.sourceInstanceId);
+      send({ type: "inserting", index: i + 1, total: insertTotal });
     }
 
     send({ type: "done", nResultsObjects: result.data.nResultsObjects, nRowsTotal: result.data.nRowsTotal });
   } catch (err) {
     send({ type: "error", err: err instanceof Error ? err.message : String(err) });
   } finally {
+    // Yield to the event loop so the final message is delivered before closing
+    await Promise.resolve();
     channel.close();
   }
 }
