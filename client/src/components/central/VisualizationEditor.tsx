@@ -21,6 +21,7 @@ import type {
 } from "platform-lib";
 import {
   getFetchConfigFromPresentationObjectConfig,
+  getDisaggregationAllowedPresentationOptions,
 } from "platform-lib";
 import { isCentralDisaggregationOption, parseCentralPresentationObjectConfig } from "~/disaggregation_helpers";
 import {
@@ -192,7 +193,11 @@ function _EditorActive(p: ActiveProps) {
       isCentralDisaggregationOption,
     );
     const allValues = [...new Set([...requiredSet, ...available])];
-    const disOpts = allValues.map((d) => ({ value: d, isRequired: requiredSet.has(d) }));
+    const disOpts = allValues.map((d) => ({
+      value: d,
+      isRequired: requiredSet.has(d),
+      allowedPresentationOptions: getDisaggregationAllowedPresentationOptions(d as any),
+    }));
     const periodCols = ["period_id", "quarter_id", "year"] as const;
     const mostGranular = disOpts.find((d) =>
       (periodCols as readonly string[]).includes(d.value),

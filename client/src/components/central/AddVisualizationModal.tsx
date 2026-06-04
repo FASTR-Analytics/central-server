@@ -17,6 +17,7 @@ import {
   type PresentationOption,
   type VizPreset,
   get_PRESENTATION_SELECT_OPTIONS,
+  getDisaggregationAllowedPresentationOptions,
   getDisaggregationLabel,
   getStartingConfigForPresentationObject,
 } from "platform-lib";
@@ -219,7 +220,11 @@ export function AddVisualizationModal(
       isCentralDisaggregationOption,
     );
     const allValues = [...new Set([...requiredSet, ...available])];
-    const allDisOpts = allValues.map((d) => ({ value: d, isRequired: requiredSet.has(d) }));
+    const allDisOpts = allValues.map((d) => ({
+      value: d,
+      isRequired: requiredSet.has(d),
+      allowedPresentationOptions: getDisaggregationAllowedPresentationOptions(d as any),
+    }));
 
     const periodCols = ["period_id", "quarter_id", "year"] as const;
     const mostGranular = allDisOpts.find((d) =>
@@ -236,16 +241,24 @@ export function AddVisualizationModal(
       } catch { return undefined; }
     })();
 
+    const parsedLabelReplacements = (() => {
+      try {
+        return metric.valueLabelReplacements ? JSON.parse(metric.valueLabelReplacements) : undefined;
+      } catch { return undefined; }
+    })();
+
     const fakeRv = {
       id: metric.id,
       resultsObjectId: metric.resultsObjectId,
       valueProps: JSON.parse(metric.valueProps ?? "[]"),
       valueFunc: metric.valueFunc,
       label: metric.label,
+      variantLabel: metric.variantLabel ?? undefined,
       formatAs: metric.formatAs,
       disaggregationOptions: allDisOpts,
       mostGranularTimePeriodColumnInResultsFile: mostGranular,
       postAggregationExpression: parsedPostAggExpr,
+      valueLabelReplacements: parsedLabelReplacements,
     };
 
     const config = getStartingConfigForPresentationObject(fakeRv as any, type, disaggregations);
@@ -552,7 +565,11 @@ function _Step3Configure(p: Step3Props) {
       isCentralDisaggregationOption,
     );
     const allValues = [...new Set([...requiredSet, ...available])];
-    return allValues.map((d) => ({ value: d, isRequired: requiredSet.has(d) }));
+    return allValues.map((d) => ({
+      value: d,
+      isRequired: requiredSet.has(d),
+      allowedPresentationOptions: getDisaggregationAllowedPresentationOptions(d as any),
+    }));
   });
 
   const typeOptions = createMemo(() => get_PRESENTATION_SELECT_OPTIONS(disOpts()));
@@ -560,7 +577,9 @@ function _Step3Configure(p: Step3Props) {
   const availableDisaggregations = createMemo(() => {
     const type = p.selectedType;
     if (!type) return [];
-    return disOpts();
+    return disOpts().filter(
+      (d) => !d.allowedPresentationOptions || d.allowedPresentationOptions.includes(type),
+    );
   });
 
   const getDisabledReason = (type: PresentationOption): string | undefined => {
