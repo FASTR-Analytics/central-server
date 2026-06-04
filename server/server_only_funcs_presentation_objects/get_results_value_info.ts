@@ -46,7 +46,7 @@ export async function getResultsValueInfoForPresentationObject(
     const cols = new Set(colRows.map((c) => c.column_name));
 
     // Build disaggregation options from physical columns present in the table
-    const disaggregationOptions: DisaggregationOption[] = PHYSICAL_DISAGG_COLS
+    const physicalDisaggregationOptions: DisaggregationOption[] = PHYSICAL_DISAGG_COLS
       .filter((col) => cols.has(col)) as DisaggregationOption[];
 
     // Determine period option from actual table columns
@@ -55,6 +55,17 @@ export async function getResultsValueInfoForPresentationObject(
       : cols.has("quarter_id") ? "quarter_id"
       : cols.has("year") ? "year"
       : undefined;
+
+    // Include period-derived options so they appear in the editor's disaggregation section.
+    // This mirrors the platform, which reads these from the stored metric definition.
+    // getPossibleValues handles dynamic period columns (year/quarter_id/month derived from period_id).
+    const periodDisaggregationOptions: DisaggregationOption[] =
+      firstPeriodOption === "period_id" ? ["period_id", "year", "quarter_id", "month"]
+      : firstPeriodOption === "quarter_id" ? ["quarter_id", "year"]
+      : firstPeriodOption === "year" ? ["year"]
+      : [];
+
+    const disaggregationOptions = [...physicalDisaggregationOptions, ...periodDisaggregationOptions];
 
     const periodBounds = await getPeriodBounds(projectDb, tableName, [], firstPeriodOption);
 
