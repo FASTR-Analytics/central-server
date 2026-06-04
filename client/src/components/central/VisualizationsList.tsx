@@ -94,9 +94,13 @@ function _VizPreviewCard(p: CardProps) {
       return { success: false as const, err: "Invalid config" };
     }
 
+    const parsedPostAggExpr = (() => {
+      try { return metric.postAggregationExpression ? JSON.parse(metric.postAggregationExpression) : undefined; }
+      catch { return undefined; }
+    })();
     const fetchConfigResult = getFetchConfigFromPresentationObjectConfig(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      { valueProps: JSON.parse(metric.valueProps ?? "[]"), valueFunc: metric.valueFunc, formatAs: metric.formatAs } as any,
+      { valueProps: JSON.parse(metric.valueProps ?? "[]"), valueFunc: metric.valueFunc, formatAs: metric.formatAs, postAggregationExpression: parsedPostAggExpr } as any,
       config,
     );
     if (!fetchConfigResult.success) {
