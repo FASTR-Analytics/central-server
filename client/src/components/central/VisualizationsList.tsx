@@ -170,7 +170,6 @@ function _VizPreviewCard(p: CardProps) {
               chartInputs={data}
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               height={"tableData" in (data as any) ? "ideal" : "flex"}
-              resolution={0.2}
             />
           )}
         </Show>
