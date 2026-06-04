@@ -33,7 +33,7 @@ export async function getPossibleValues(
     min: number;
     max: number;
   },
-): Promise<APIResponseWithData<string[]>> {
+): Promise<APIResponseWithData<{ id: string; label: string }[]>> {
   return await tryCatchDatabaseAsync(async () => {
     const tableName = getResultsObjectTableName(resultsObjectId);
 
@@ -163,7 +163,8 @@ LIMIT ${MAX_REPLICANT_OPTIONS + 1}`;
 
     const possibleValues = results
       .map((opt) => opt.disaggregation_value)
-      .filter((v) => v != null && String(v).trim() !== "");
+      .filter((v) => v != null && String(v).trim() !== "")
+      .map((v) => ({ id: String(v), label: String(v) }));
     return { success: true, data: possibleValues };
   });
 }

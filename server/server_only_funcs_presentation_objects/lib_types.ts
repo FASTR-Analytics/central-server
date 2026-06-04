@@ -61,7 +61,7 @@ export type ItemsHolderPresentationObject = {
 );
 
 export type DisaggregationPossibleValuesStatus =
-  | { status: "ok"; values: string[] }
+  | { status: "ok"; values: { id: string; label: string }[] }
   | { status: "too_many_values" }
   | { status: "no_values_available" }
   | { status: "error"; message: string };
