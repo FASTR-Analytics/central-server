@@ -8,11 +8,14 @@ import {
   StepperChipsWithTitles,
   getStepper,
 } from "panther";
-import { For, Show, createMemo, createSignal } from "solid-js";
+import { For, Match, Show, Switch, createMemo, createSignal } from "solid-js";
 import {
+  DEFAULT_S_CONFIG,
+  DEFAULT_T_CONFIG,
   type DisaggregationOption,
   type PresentationObjectConfig,
   type PresentationOption,
+  type VizPreset,
   get_PRESENTATION_SELECT_OPTIONS,
   getDisaggregationLabel,
   getStartingConfigForPresentationObject,
@@ -38,6 +41,8 @@ type MetricsByModule = {
   moduleId: string;
   metricGroups: MetricGroup[];
 };
+
+const CUSTOM_OPTION = "__custom__";
 
 function groupMetrics(metrics: ProjectMetric[]): MetricsByModule[] {
   const visibleMetrics = metrics.filter((m) => !m.hide);
@@ -70,6 +75,7 @@ export function AddVisualizationModal(
   p: AlertComponentProps<AddVisualizationModalProps, AddVisualizationResult>,
 ) {
   const [selectedMetricId, setSelectedMetricId] = createSignal("");
+  const [selectedPresetId, setSelectedPresetId] = createSignal<string | undefined>(undefined);
   const [selectedType, setSelectedType] = createSignal<PresentationOption | undefined>(undefined);
   const [selectedDisaggregations, setSelectedDisaggregations] = createSignal<
     DisaggregationOption[]
@@ -81,30 +87,66 @@ export function AddVisualizationModal(
     () => p.metrics.find((m) => m.id === selectedMetricId()) ?? null,
   );
 
+  const parsedPresets = createMemo((): VizPreset[] => {
+    const metric = selectedMetric();
+    if (!metric?.vizPresets) return [];
+    try {
+      return JSON.parse(metric.vizPresets) as VizPreset[];
+    } catch {
+      return [];
+    }
+  });
+
+  const metricHasPresets = createMemo(() => parsedPresets().length > 0);
+
+  const isPresetSelected = () => {
+    const id = selectedPresetId();
+    return !!id && id !== CUSTOM_OPTION;
+  };
+
   const stepperData = createMemo(() => ({
     hasMetric: !!selectedMetricId(),
+    hasPreset: !!selectedPresetId(),
     hasType: !!selectedType(),
   }));
 
   const stepper = getStepper(stepperData, {
     initialStep: 0,
     minStep: 0,
-    maxStep: 1,
+    maxStep: 2,
     getValidation: (step, data) => {
       if (step === 0) return { canGoPrev: false, canGoNext: data.hasMetric };
-      if (step === 1) return { canGoPrev: true, canGoNext: data.hasType };
+      if (step === 1) return { canGoPrev: true, canGoNext: metricHasPresets() ? data.hasPreset : data.hasType };
+      if (step === 2) return { canGoPrev: true, canGoNext: data.hasType };
       return { canGoPrev: true, canGoNext: false };
     },
   });
 
-  const stepLabels = ["Metric", "Configure"];
+  const stepLabels = ["Metric", "Presets", "Configure"];
+
+  const visibleSteps = createMemo(() => {
+    if (!metricHasPresets()) return [0, 2];
+    if (isPresetSelected()) return [0, 1];
+    return [0, 1, 2];
+  });
+
+  const isLastStep = () =>
+    stepper.currentStep() === 2 ||
+    (stepper.currentStep() === 1 && (isPresetSelected() || !metricHasPresets()));
 
   const handleMetricSelect = (metricId: string) => {
     if (metricId !== selectedMetricId()) {
       setSelectedMetricId(metricId);
+      setSelectedPresetId(undefined);
       setSelectedType(undefined);
       setSelectedDisaggregations([]);
     }
+  };
+
+  const handlePresetSelect = (presetId: string) => {
+    setSelectedPresetId(presetId);
+    setSelectedType(undefined);
+    setSelectedDisaggregations([]);
   };
 
   const handleTypeSelect = (type: PresentationOption) => {
@@ -112,9 +154,61 @@ export function AddVisualizationModal(
     setSelectedDisaggregations([]);
   };
 
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      if (isLastStep() && stepper.canGoNext()) {
+        handleCreate();
+      } else if (!isLastStep() && stepper.canGoNext()) {
+        handleNext();
+      }
+    }
+  };
+
+  const handleNext = () => {
+    if (!metricHasPresets() && stepper.currentStep() === 0) {
+      // Skip the preset step entirely
+      stepper.goNext();
+      stepper.goNext();
+    } else {
+      stepper.goNext();
+    }
+  };
+
+  const handleBack = () => {
+    if (!metricHasPresets() && stepper.currentStep() === 2) {
+      stepper.goPrev();
+      stepper.goPrev();
+    } else {
+      stepper.goPrev();
+    }
+  };
+
   const handleCreate = () => {
     const metric = selectedMetric();
     if (!metric) return;
+
+    const presetId = selectedPresetId();
+    if (presetId && presetId !== CUSTOM_OPTION) {
+      const preset = parsedPresets().find((pr) => pr.id === presetId);
+      if (!preset) return;
+      const config: PresentationObjectConfig = {
+        d: preset.config.d,
+        s: { ...DEFAULT_S_CONFIG, ...preset.config.s },
+        t: {
+          ...DEFAULT_T_CONFIG,
+          caption: preset.config.t.caption ? preset.config.t.caption.en : DEFAULT_T_CONFIG.caption,
+          subCaption: preset.config.t.subCaption ? preset.config.t.subCaption.en : DEFAULT_T_CONFIG.subCaption,
+          footnote: preset.config.t.footnote ? preset.config.t.footnote.en : DEFAULT_T_CONFIG.footnote,
+          captionRelFontSize: preset.config.t.captionRelFontSize ?? DEFAULT_T_CONFIG.captionRelFontSize,
+          subCaptionRelFontSize: preset.config.t.subCaptionRelFontSize ?? DEFAULT_T_CONFIG.subCaptionRelFontSize,
+          footnoteRelFontSize: preset.config.t.footnoteRelFontSize ?? DEFAULT_T_CONFIG.footnoteRelFontSize,
+        },
+      };
+      p.close({ metric, config });
+      return;
+    }
+
     const type = selectedType();
     if (!type) return;
 
@@ -169,12 +263,12 @@ export function AddVisualizationModal(
       topPanel={
         <div class="flex items-center justify-between">
           <div class="font-700 text-lg">Create visualization</div>
-          <StepperChipsWithTitles stepper={stepper} labels={stepLabels} />
+          <StepperChipsWithTitles stepper={stepper} labels={stepLabels} visibleSteps={visibleSteps()} />
         </div>
       }
       leftButtons={
         <Show when={stepper.currentStep() > 0}>
-          <Button onClick={stepper.goPrev} outline>
+          <Button onClick={handleBack} outline>
             Back
           </Button>
         </Show>
@@ -185,9 +279,9 @@ export function AddVisualizationModal(
             Cancel
           </Button>
           <Show
-            when={stepper.currentStep() === 1}
+            when={isLastStep()}
             fallback={
-              <Button onClick={stepper.goNext} disabled={!stepper.canGoNext()}>
+              <Button onClick={handleNext} disabled={!stepper.canGoNext()}>
                 Next
               </Button>
             }
@@ -199,28 +293,37 @@ export function AddVisualizationModal(
         </>
       }
     >
-      <div class="h-[min(36rem,60vh)]">
-        <Show when={stepper.currentStep() === 0}>
-          <_Step1Metric
-            metricsByModule={metricsByModule()}
-            allMetricCount={p.metrics.filter((m) => !m.hide).length}
-            selectedMetricId={selectedMetricId()}
-            onSelectMetric={handleMetricSelect}
-          />
-        </Show>
-        <Show when={stepper.currentStep() === 1}>
-          <_Step2Configure
-            metric={selectedMetric()!}
-            selectedType={selectedType()}
-            selectedDisaggregations={selectedDisaggregations()}
-            onSelectType={handleTypeSelect}
-            onToggleDisaggregation={(d, checked) => {
-              setSelectedDisaggregations((prev) =>
-                checked ? [...prev, d] : prev.filter((x) => x !== d),
-              );
-            }}
-          />
-        </Show>
+      <div class="h-[min(36rem,60vh)]" onKeyDown={handleKeyDown} tabIndex={0}>
+        <Switch>
+          <Match when={stepper.currentStep() === 0}>
+            <_Step1Metric
+              metricsByModule={metricsByModule()}
+              allMetricCount={p.metrics.filter((m) => !m.hide).length}
+              selectedMetricId={selectedMetricId()}
+              onSelectMetric={handleMetricSelect}
+            />
+          </Match>
+          <Match when={stepper.currentStep() === 1 && metricHasPresets()}>
+            <_Step2Preset
+              presets={parsedPresets()}
+              selectedPresetId={selectedPresetId()}
+              onSelectPreset={handlePresetSelect}
+            />
+          </Match>
+          <Match when={stepper.currentStep() === 2 || (stepper.currentStep() === 1 && !metricHasPresets())}>
+            <_Step3Configure
+              metric={selectedMetric()!}
+              selectedType={selectedType()}
+              selectedDisaggregations={selectedDisaggregations()}
+              onSelectType={handleTypeSelect}
+              onToggleDisaggregation={(d, checked) => {
+                setSelectedDisaggregations((prev) =>
+                  checked ? [...prev, d] : prev.filter((x) => x !== d),
+                );
+              }}
+            />
+          </Match>
+        </Switch>
       </div>
     </ModalContainer>
   );
@@ -364,7 +467,66 @@ function _MetricCard(p: MetricCardProps) {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-type Step2Props = {
+type Step2PresetProps = {
+  presets: VizPreset[];
+  selectedPresetId: string | undefined;
+  onSelectPreset: (id: string) => void;
+};
+
+function _Step2Preset(p: Step2PresetProps) {
+  return (
+    <div class="ui-pad h-full overflow-auto">
+      <div class="grid grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] gap-3">
+        <For each={p.presets}>
+          {(preset) => (
+            <_PresetCard
+              id={preset.id}
+              label={preset.label.en}
+              description={preset.description.en}
+              selected={p.selectedPresetId === preset.id}
+              onClick={() => p.onSelectPreset(preset.id)}
+            />
+          )}
+        </For>
+        <_PresetCard
+          id={CUSTOM_OPTION}
+          label="Custom"
+          description="Configure manually"
+          selected={p.selectedPresetId === CUSTOM_OPTION}
+          onClick={() => p.onSelectPreset(CUSTOM_OPTION)}
+        />
+      </div>
+    </div>
+  );
+}
+
+type PresetCardProps = {
+  id: string;
+  label: string;
+  description: string;
+  selected: boolean;
+  onClick: () => void;
+};
+
+function _PresetCard(p: PresetCardProps) {
+  return (
+    <div
+      class="bg-base-100 ui-pad border-base-300 cursor-pointer rounded border transition-colors"
+      classList={{
+        "border-primary bg-primary/5": p.selected,
+        "ui-hoverable": !p.selected,
+      }}
+      onClick={p.onClick}
+    >
+      <div class="font-700 text-sm">{p.label}</div>
+      <div class="text-base-content/50 mt-1 text-xs">{p.description}</div>
+    </div>
+  );
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+type Step3Props = {
   metric: ProjectMetric | null;
   selectedType: PresentationOption | undefined;
   selectedDisaggregations: DisaggregationOption[];
@@ -380,7 +542,7 @@ const TYPE_LABELS: Record<PresentationOption, string> = {
   map: "Map",
 };
 
-function _Step2Configure(p: Step2Props) {
+function _Step3Configure(p: Step3Props) {
   const disOpts = createMemo(() => {
     if (!p.metric) return [];
     const requiredSet = new Set(
@@ -439,32 +601,41 @@ function _Step2Configure(p: Step2Props) {
         </div>
       </div>
 
-      <Show when={p.selectedType && availableDisaggregations().length > 0}>
+      <Show when={p.selectedType}>
         <div>
           <div class="font-700 mb-3">Disaggregate by</div>
-          <div class="ui-spy-sm">
-            <For each={availableDisaggregations()}>
-              {(disOpt) => (
-                <Checkbox
-                  label={
-                    <>
-                      {getDisaggregationLabel(disOpt.value, {}).en}
-                      <Show when={disOpt.isRequired}>
-                        <span class="text-base-content/40 ml-2 text-xs">(required)</span>
-                      </Show>
-                    </>
-                  }
-                  checked={disOpt.isRequired || p.selectedDisaggregations.includes(disOpt.value)}
-                  disabled={disOpt.isRequired}
-                  onChange={(checked) => {
-                    if (!disOpt.isRequired) {
-                      p.onToggleDisaggregation(disOpt.value, checked);
+          <Show
+            when={availableDisaggregations().length > 0}
+            fallback={
+              <div class="text-base-content/50 text-sm">
+                No disaggregation options available for this visualization type
+              </div>
+            }
+          >
+            <div class="ui-spy-sm">
+              <For each={availableDisaggregations()}>
+                {(disOpt) => (
+                  <Checkbox
+                    label={
+                      <>
+                        {getDisaggregationLabel(disOpt.value, {}).en}
+                        <Show when={disOpt.isRequired}>
+                          <span class="text-base-content/40 ml-2 text-xs">(required)</span>
+                        </Show>
+                      </>
                     }
-                  }}
-                />
-              )}
-            </For>
-          </div>
+                    checked={disOpt.isRequired || p.selectedDisaggregations.includes(disOpt.value)}
+                    disabled={disOpt.isRequired}
+                    onChange={(checked) => {
+                      if (!disOpt.isRequired) {
+                        p.onToggleDisaggregation(disOpt.value, checked);
+                      }
+                    }}
+                  />
+                )}
+              </For>
+            </div>
+          </Show>
         </div>
       </Show>
     </div>

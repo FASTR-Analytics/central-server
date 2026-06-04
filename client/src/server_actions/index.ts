@@ -33,6 +33,7 @@ export type ProjectMetric = {
   resultsObjectId: string;
   hide: boolean;
   lastRunAt: string;
+  vizPresets: string | null;
 };
 
 export type PresentationObjectSummary = {
