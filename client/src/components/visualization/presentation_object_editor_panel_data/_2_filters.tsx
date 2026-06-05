@@ -388,22 +388,28 @@ function DisaggregationFilter(p: DisaggregationFilterProps) {
         label={getDisplayDisaggregationLabel(p.disOpt.value)}
         checked={!!p.tempConfig.d.filterBy.some((fil) => fil.disOpt === p.disOpt.value)}
         onChange={(checked) => {
+          const isReplicantField = p.tempConfig.d.disaggregateBy.some(
+            (d) => d.disDisplayOpt === "replicant" && d.disOpt === p.disOpt.value,
+          );
           if (checked) {
             p.setTempConfig("d", "filterBy", (prev) => [
               ...prev.filter((d) => d.disOpt !== p.disOpt.value),
               { disOpt: p.disOpt.value, values: [] },
             ]);
-            p.setTempConfig("d", "selectedReplicantValue", undefined);
+            if (isReplicantField) p.setTempConfig("d", "selectedReplicantValue", undefined);
           } else {
             p.setTempConfig("d", "filterBy", (prev) =>
               prev.filter((d) => d.disOpt !== p.disOpt.value),
             );
-            p.setTempConfig("d", "selectedReplicantValue", undefined);
+            if (isReplicantField) p.setTempConfig("d", "selectedReplicantValue", undefined);
           }
         }}
       />
       <Show when={p.tempConfig.d.filterBy.find((fil) => fil.disOpt === p.disOpt.value)} keyed>
         {(keyedFilter) => {
+          const isReplicantField = p.tempConfig.d.disaggregateBy.some(
+            (d) => d.disDisplayOpt === "replicant" && d.disOpt === p.disOpt.value,
+          );
           function toggleVal(val: string) {
             const normalized = String(val).toLowerCase();
             p.setTempConfig(
@@ -418,7 +424,7 @@ function DisaggregationFilter(p: DisaggregationFilterProps) {
                 return [...(prev ?? []), val];
               },
             );
-            p.setTempConfig("d", "selectedReplicantValue", undefined);
+            if (isReplicantField) p.setTempConfig("d", "selectedReplicantValue", undefined);
           }
           return (
             <div class="pb-4">
