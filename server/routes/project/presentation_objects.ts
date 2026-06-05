@@ -80,7 +80,13 @@ routesPresentationObjects.get("/projects/:projectId/metrics", requireAuth(), asy
       valueFunc: r.value_func,
       formatAs: r.format_as,
       valueProps: r.value_props,
-      requiredDisaggregationOptions: r.required_disaggregation_options,
+      requiredDisaggregationOptions: (() => {
+        const available = roAvailableOptions.get(r.results_object_id) ?? [];
+        if (!available.includes("admin_area_1")) return r.required_disaggregation_options;
+        const existing = JSON.parse(r.required_disaggregation_options ?? "[]") as string[];
+        if (existing.includes("admin_area_1")) return r.required_disaggregation_options;
+        return JSON.stringify([...existing, "admin_area_1"]);
+      })(),
       availableDisaggregationOptions: JSON.stringify(roAvailableOptions.get(r.results_object_id) ?? []),
       valueLabelReplacements: r.value_label_replacements,
       postAggregationExpression: r.post_aggregation_expression,

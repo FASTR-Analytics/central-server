@@ -22,6 +22,7 @@ import type {
 import {
   getFetchConfigFromPresentationObjectConfig,
   getDisaggregationAllowedPresentationOptions,
+  getNextAvailableDisaggregationDisplayOption,
 } from "platform-lib";
 import { isCentralDisaggregationOption, parseCentralPresentationObjectConfig } from "~/disaggregation_helpers";
 import {
@@ -181,11 +182,9 @@ type ActiveProps = {
 
 function _EditorActive(p: ActiveProps) {
   const [label, setLabel] = createSignal(p.initialLabel);
-  const [tempConfig, setTempConfig] = createStore<PresentationObjectConfig>(
-    structuredClone(p.initialConfig),
-  );
 
-  const poDetailForPanel: PlatformPODetail = (() => {
+  // Build resultsValue first so it can be used by the config patcher below.
+  const resultsValue: ResultsValue = (() => {
     const requiredSet = new Set(
       (JSON.parse(p.metric.requiredDisaggregationOptions ?? "[]") as string[]).filter(isCentralDisaggregationOption),
     );
@@ -202,28 +201,15 @@ function _EditorActive(p: ActiveProps) {
     const mostGranular = disOpts.find((d) =>
       (periodCols as readonly string[]).includes(d.value),
     )?.value as (typeof periodCols)[number] | undefined;
-
     const parsedLabelReplacements = (() => {
-      try {
-        return p.metric.valueLabelReplacements
-          ? (JSON.parse(p.metric.valueLabelReplacements) as Record<string, string>)
-          : undefined;
-      } catch {
-        return undefined;
-      }
+      try { return p.metric.valueLabelReplacements ? JSON.parse(p.metric.valueLabelReplacements) as Record<string, string> : undefined; }
+      catch { return undefined; }
     })();
-
     const parsedPostAggregationExpression = (() => {
-      try {
-        return p.metric.postAggregationExpression
-          ? JSON.parse(p.metric.postAggregationExpression)
-          : undefined;
-      } catch {
-        return undefined;
-      }
+      try { return p.metric.postAggregationExpression ? JSON.parse(p.metric.postAggregationExpression) : undefined; }
+      catch { return undefined; }
     })();
-
-    const resultsValue: ResultsValue = {
+    return {
       id: p.metric.id,
       resultsObjectId: p.metric.resultsObjectId,
       valueProps: JSON.parse(p.metric.valueProps ?? "[]"),
@@ -236,18 +222,43 @@ function _EditorActive(p: ActiveProps) {
       valueLabelReplacements: parsedLabelReplacements,
       postAggregationExpression: parsedPostAggregationExpression,
     };
-
-    return {
-      id: p.poId ?? "new",
-      projectId: p.projectId,
-      lastUpdated: new Date().toISOString(),
-      label: p.initialLabel,
-      resultsValue,
-      config: p.initialConfig,
-      isDefault: false,
-      folderId: null,
-    };
   })();
+
+  // Auto-patch: if a required disaggregation is missing from disaggregateBy (e.g. legacy
+  // configs created before admin_area_1 was marked required), add it so the editor doesn't
+  // show "Error with required disaggregator". The fix is not saved until the user clicks Save.
+  const patchedInitialConfig = (() => {
+    const config = structuredClone(p.initialConfig);
+    const effectiveValueProps: string[] = JSON.parse(p.metric.valueProps ?? "[]");
+    for (const disOpt of resultsValue.disaggregationOptions) {
+      if (!disOpt.isRequired) continue;
+      if (disOpt.allowedPresentationOptions && !disOpt.allowedPresentationOptions.includes(config.d.type)) continue;
+      if (config.d.disaggregateBy.some((d) => d.disOpt === disOpt.value)) continue;
+      const disDisplayOpt = getNextAvailableDisaggregationDisplayOption(
+        resultsValue,
+        config,
+        disOpt.value as any,
+        effectiveValueProps,
+      );
+      config.d.disaggregateBy.push({ disOpt: disOpt.value as any, disDisplayOpt });
+    }
+    return config;
+  })();
+
+  const [tempConfig, setTempConfig] = createStore<PresentationObjectConfig>(
+    structuredClone(patchedInitialConfig),
+  );
+
+  const poDetailForPanel: PlatformPODetail = {
+    id: p.poId ?? "new",
+    projectId: p.projectId,
+    lastUpdated: new Date().toISOString(),
+    label: p.initialLabel,
+    resultsValue,
+    config: patchedInitialConfig,
+    isDefault: false,
+    folderId: null,
+  };
 
   const rvInfoQuery = timQuery(
     () =>
