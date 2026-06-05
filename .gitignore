@@ -1,4 +1,6 @@
 node_modules
+_local_instance_dir/
+servers.json
 
 client_dist/
 client_dist.backup/

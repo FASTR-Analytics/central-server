@@ -6,8 +6,13 @@ export const authMiddleware = _BYPASS_AUTH
   ? async (_c: unknown, next: () => Promise<void>) => await next()
   : clerkMiddleware();
 
+const allowedOrigins = Deno.env.get("CLIENT_ORIGIN")?.split(",") || [
+  "http://localhost:3000",
+];
+
 export const corsMiddleware = cors({
-  origin: "*",
+  origin: allowedOrigins,
+  credentials: true,
   allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowHeaders: ["Content-Type", "Authorization", "Project-Id"],
 });

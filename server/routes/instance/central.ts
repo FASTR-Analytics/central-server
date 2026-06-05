@@ -4,7 +4,7 @@ import type { GlobalUser, CentralExportPayload } from "lib";
 import { requireHUser } from "../../middleware/auth.ts";
 import { doImport, insertRowsChunk } from "./import.ts";
 import { getPgConnectionFromCacheOrNew, getResultsObjectTableName } from "../../db/mod.ts";
-import { _CENTRAL_SERVER_SECRET } from "../../exposed_env_vars.ts";
+import { _BYPASS_AUTH, _CENTRAL_SERVER_SECRET, _SERVERS_FILE_PATH } from "../../exposed_env_vars.ts";
 
 type Env = { Variables: { globalUser: GlobalUser } };
 
@@ -26,7 +26,7 @@ export const routesCentral = new Hono<Env>();
 
 routesCentral.get("/servers.json", async (c) => {
   try {
-    const content = await Deno.readTextFile("/app/servers.json");
+    const content = await Deno.readTextFile(_SERVERS_FILE_PATH);
     return c.json(JSON.parse(content));
   } catch {
     return c.json([]);
@@ -36,12 +36,12 @@ routesCentral.get("/servers.json", async (c) => {
 routesCentral.get("/central_reporting_projects/:sourceServerId", requireHUser(), async (c) => {
   const sourceServerId = c.req.param("sourceServerId");
   const authHeader = c.req.header("Authorization");
-  if (!authHeader) return c.json({ success: false, err: "No auth token" }, 401);
+  if (!authHeader && !_BYPASS_AUTH) return c.json({ success: false, err: "No auth token" }, 401);
 
   try {
     const response = await fetch(
       `https://${sourceServerId}.fastr-analytics.org/central_reporting_projects`,
-      { headers: { Authorization: authHeader } },
+      { headers: authHeader ? { Authorization: authHeader } : {} },
     );
     const data = await response.json();
     return c.json(data, response.status as 200 | 401 | 403 | 404 | 500);

@@ -23,6 +23,7 @@ import {
   getFetchConfigFromPresentationObjectConfig,
   getDisaggregationAllowedPresentationOptions,
   getNextAvailableDisaggregationDisplayOption,
+  get_DISAGGREGATION_DISPLAY_OPTIONS,
 } from "platform-lib";
 import { isCentralDisaggregationOption, parseCentralPresentationObjectConfig } from "~/disaggregation_helpers";
 import {
@@ -234,12 +235,23 @@ function _EditorActive(p: ActiveProps) {
       if (!disOpt.isRequired) continue;
       if (disOpt.allowedPresentationOptions && !disOpt.allowedPresentationOptions.includes(config.d.type)) continue;
       if (config.d.disaggregateBy.some((d) => d.disOpt === disOpt.value)) continue;
-      const disDisplayOpt = getNextAvailableDisaggregationDisplayOption(
+      let disDisplayOpt = getNextAvailableDisaggregationDisplayOption(
         resultsValue,
         config,
         disOpt.value as any,
         effectiveValueProps,
       );
+      // "replicant" is not mapped to a figure dimension — it relies on selectedReplicantValue
+      // to pre-filter data to one value. Central-server has no replicant-picker UI so
+      // selectedReplicantValue is always undefined → "UNSELECTED" → empty data.
+      // If a non-replicant option is still free, use it instead.
+      if (disDisplayOpt === "replicant") {
+        const existingOpts = new Set(config.d.disaggregateBy.map((d) => d.disDisplayOpt));
+        const altOpt = (get_DISAGGREGATION_DISPLAY_OPTIONS()[config.d.type] ?? []).find(
+          (o) => o.value !== "replicant" && o.value !== "mapArea" && !existingOpts.has(o.value),
+        );
+        if (altOpt) disDisplayOpt = altOpt.value;
+      }
       config.d.disaggregateBy.push({ disOpt: disOpt.value as any, disDisplayOpt });
     }
     return config;
@@ -279,10 +291,29 @@ function _EditorActive(p: ActiveProps) {
         try { return m.postAggregationExpression ? JSON.parse(m.postAggregationExpression) : undefined; }
         catch { return undefined; }
       })();
+
+      // If a replicant disaggregation has no value selected yet but the user has applied a
+      // filterBy for the same field, promote the first filter value to selectedReplicantValue.
+      // This prevents the "UNSELECTED" sentinel (which matches nothing) while keeping a
+      // single country's data (avoiding "Duplicate values" in figure generation).
+      const replicantDis = cfg.d.disaggregateBy.find((d) => d.disDisplayOpt === "replicant");
+      const replicantFieldFilter = replicantDis && cfg.d.selectedReplicantValue === undefined
+        ? cfg.d.filterBy.find((f) => f.disOpt === replicantDis.disOpt && f.values.length > 0)
+        : undefined;
+      const effectiveCfg = replicantFieldFilter
+        ? {
+            ...cfg,
+            d: {
+              ...cfg.d,
+              selectedReplicantValue: String(replicantFieldFilter.values[0]),
+              filterBy: cfg.d.filterBy.filter((f) => f.disOpt !== replicantDis!.disOpt),
+            },
+          }
+        : cfg;
+
       const fetchConfigResult = getFetchConfigFromPresentationObjectConfig(
         { valueProps: JSON.parse(m.valueProps ?? "[]"), valueFunc: m.valueFunc, formatAs: m.formatAs, postAggregationExpression: parsedPAE } as any,
-        cfg,
-        { excludeReplicantFilter: true },
+        effectiveCfg,
       );
       if (!fetchConfigResult.success) return Promise.resolve({ success: true as const, data: null });
 

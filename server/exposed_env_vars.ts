@@ -22,3 +22,7 @@ export const _START_TIME = new Date().toISOString();
 export const _BYPASS_AUTH = !!Deno.env.get("BYPASS_AUTH") && !_IS_PRODUCTION;
 
 export const _CENTRAL_SERVER_SECRET = Deno.env.get("CENTRAL_SERVER_SECRET") ?? "";
+
+export const _SERVERS_FILE_PATH = _IS_PRODUCTION
+  ? "/app/servers.json"
+  : (Deno.env.get("SERVERS_FILE_PATH") ?? "./servers.json");
