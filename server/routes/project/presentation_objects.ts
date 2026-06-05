@@ -12,8 +12,8 @@ import {
   deletePresentationObject,
   duplicatePresentationObject,
 } from "../../db/project/presentation_objects.ts";
-import { getPresentationObjectItems, getResultsValueInfoForPresentationObject } from "../../server_only_funcs_presentation_objects/mod.ts";
-import type { GenericLongFormFetchConfig, PeriodOption } from "../../server_only_funcs_presentation_objects/lib_types.ts";
+import { getPresentationObjectItems, getResultsValueInfoForPresentationObject, getPossibleValues } from "../../server_only_funcs_presentation_objects/mod.ts";
+import type { DisaggregationOption, GenericLongFormFetchConfig, PeriodOption } from "../../server_only_funcs_presentation_objects/lib_types.ts";
 
 type Env = { Variables: { globalUser: GlobalUser } };
 
@@ -188,6 +188,26 @@ routesPresentationObjects.post("/projects/:projectId/presentation_object_items",
     body.fetchConfig,
     body.firstPeriodOption,
     body.moduleLastRun,
+  );
+  if (!result.success) return c.json(result, 500);
+  return c.json(result);
+});
+
+routesPresentationObjects.post("/projects/:projectId/replicant_options", requireAuth(), async (c) => {
+  const { projectId } = c.req.param();
+  const body = await c.req.json<{
+    resultsObjectId: string;
+    replicantDisOpt: DisaggregationOption;
+    fetchConfig: GenericLongFormFetchConfig;
+  }>();
+  const mainDb = getPgConnectionFromCacheOrNew("main", "READ_ONLY");
+  const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_ONLY");
+  const result = await getPossibleValues(
+    projectDb,
+    body.resultsObjectId,
+    body.replicantDisOpt,
+    mainDb,
+    body.fetchConfig.filters,
   );
   if (!result.success) return c.json(result, 500);
   return c.json(result);

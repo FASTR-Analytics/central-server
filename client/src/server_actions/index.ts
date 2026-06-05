@@ -3,6 +3,7 @@ import type { GlobalUser, ProjectSummary, ProjectDetail, CentralReportingProject
 
 export type { InstanceUser, ProjectUser, ProjectUserPermissions };
 import type {
+  DisaggregationOption,
   GenericLongFormFetchConfig,
   ItemsHolderPresentationObject,
   ResultsValueInfoForPresentationObject,
@@ -210,6 +211,22 @@ export const serverActions = {
         fetchConfig: args.fetchConfig,
         firstPeriodOption: args.firstPeriodOption,
         moduleLastRun: args.moduleLastRun,
+      }),
+    }),
+
+  getReplicantOptions: (args: {
+    projectId: string;
+    resultsObjectId: string;
+    replicantDisOpt: DisaggregationOption;
+    fetchConfig: GenericLongFormFetchConfig;
+  }) =>
+    apiFetch<{ id: string; label: string }[]>(`/projects/${args.projectId}/replicant_options`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        resultsObjectId: args.resultsObjectId,
+        replicantDisOpt: args.replicantDisOpt,
+        fetchConfig: args.fetchConfig,
       }),
     }),
 

@@ -4,6 +4,7 @@ import {
   FrameLeftResizable,
   FrameTop,
   Input,
+  Select,
   StateHolderWrapper,
   openAlert,
   openComponent,
@@ -333,6 +334,40 @@ function _EditorActive(p: ActiveProps) {
     "Loading chart data...",
   );
 
+  const replicantPickerQuery = timQuery(
+    () => {
+      const replicantDis = unwrap(tempConfig).d.disaggregateBy.find((d) => d.disDisplayOpt === "replicant");
+      if (!replicantDis) return Promise.resolve({ success: true as const, data: [] as { id: string; label: string }[] });
+      const cfg = unwrap(tempConfig);
+      const parsedPAE = (() => {
+        try { return p.metric.postAggregationExpression ? JSON.parse(p.metric.postAggregationExpression) : undefined; }
+        catch { return undefined; }
+      })();
+      const fetchConfigResult = getFetchConfigFromPresentationObjectConfig(
+        { valueProps: JSON.parse(p.metric.valueProps ?? "[]"), valueFunc: p.metric.valueFunc, formatAs: p.metric.formatAs, postAggregationExpression: parsedPAE } as any,
+        cfg,
+        { excludeReplicantFilter: true },
+      );
+      if (!fetchConfigResult.success) return Promise.resolve({ success: true as const, data: [] as { id: string; label: string }[] });
+      return serverActions.getReplicantOptions({
+        projectId: p.projectId,
+        resultsObjectId: p.metric.resultsObjectId,
+        replicantDisOpt: replicantDis.disOpt as any,
+        fetchConfig: fetchConfigResult.data,
+      });
+    },
+    "Loading...",
+  );
+
+  // Auto-select the first replicant value when options load and none is selected
+  createEffect(() => {
+    const state = replicantPickerQuery.state();
+    if (state.status !== "ready" || !state.data?.length) return;
+    if (tempConfig.d.selectedReplicantValue === undefined) {
+      setTempConfig("d", "selectedReplicantValue", state.data[0].id);
+    }
+  });
+
   let firstItemsFetch = true;
   createEffect(() => {
     for (const k in tempConfig.d) { (tempConfig.d as any)[k]; }
@@ -349,6 +384,7 @@ function _EditorActive(p: ActiveProps) {
 
     if (firstItemsFetch) { firstItemsFetch = false; return; }
     itemsQuery.fetch();
+    replicantPickerQuery.fetch();
   });
 
   const figureInputs = createMemo(() => {
@@ -501,7 +537,22 @@ function _EditorActive(p: ActiveProps) {
           </Switch>
         }
       >
-        <div class="ui-pad h-full w-full overflow-auto">
+        <div class="flex h-full w-full flex-col overflow-hidden">
+          <Show when={tempConfig.d.disaggregateBy.some((d) => d.disDisplayOpt === "replicant")}>
+            <div class="ui-pad-sm ui-gap-sm flex flex-none items-center border-b">
+              <span class="text-sm text-base-content/60">Preview as:</span>
+              <div class="w-64">
+                <Select
+                  options={(replicantPickerQuery.state().status === "ready" ? (replicantPickerQuery.state() as any).data : []).map((o: { id: string; label: string }) => ({ value: o.id, label: o.label }))}
+                  value={tempConfig.d.selectedReplicantValue}
+                  onChange={(v) => setTempConfig("d", "selectedReplicantValue", v)}
+                  placeholder={replicantPickerQuery.state().status === "loading" ? "Loading..." : "Select a value"}
+                  fullWidth
+                />
+              </div>
+            </div>
+          </Show>
+          <div class="ui-pad min-h-0 flex-1 overflow-auto">
           <Show
             when={figureInputs()}
             fallback={
@@ -530,6 +581,7 @@ function _EditorActive(p: ActiveProps) {
               </Show>
             )}
           </Show>
+          </div>
         </div>
       </FrameLeftResizable>
     </FrameTop>
