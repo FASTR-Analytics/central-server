@@ -282,6 +282,7 @@ function _EditorActive(p: ActiveProps) {
       const fetchConfigResult = getFetchConfigFromPresentationObjectConfig(
         { valueProps: JSON.parse(m.valueProps ?? "[]"), valueFunc: m.valueFunc, formatAs: m.formatAs, postAggregationExpression: parsedPAE } as any,
         cfg,
+        { excludeReplicantFilter: true },
       );
       if (!fetchConfigResult.success) return Promise.resolve({ success: true as const, data: null });
 
