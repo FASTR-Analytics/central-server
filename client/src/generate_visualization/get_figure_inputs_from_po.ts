@@ -8,6 +8,7 @@ import {
 } from "panther";
 import {
   type IndicatorMetadata,
+  inferPeriodFormatFromValue,
   ItemsHolderPresentationObject,
   PeriodBounds,
   PresentationObjectConfig,
@@ -362,9 +363,9 @@ function withDateRange(
   }
   const calendar = getCalendar();
   const periodType: PeriodType =
-    dateRange.periodOption === "period_id"
+    inferPeriodFormatFromValue(dateRange.min) === "period_id"
       ? "year-month"
-      : dateRange.periodOption === "quarter_id"
+      : inferPeriodFormatFromValue(dateRange.min) === "quarter_id"
         ? "year-quarter"
         : "year";
   if (dateRange.min === dateRange.max) {

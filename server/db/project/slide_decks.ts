@@ -12,6 +12,30 @@ import type { DBSlide, DBSlideDeck, DBSlideDeckFolder } from "./_project_databas
 import { tryCatchDatabaseAsync } from "../utils.ts";
 import type { APIResponseWithData } from "../utils.ts";
 
+function _defaultDeckConfig(label: string): SlideDeckConfig {
+  return {
+    label,
+    selectedReplicantValue: undefined,
+    logos: {
+      availableCustom: [],
+      cover: { selected: [], showByDefault: true },
+      header: { selected: [], showByDefault: true },
+      footer: { selected: [], showByDefault: true },
+    },
+    globalFooterText: undefined,
+    showPageNumbers: true,
+    headerSize: 1,
+    useWatermark: false,
+    watermarkText: "",
+    colorTheme: { type: "preset", id: "gff" },
+    overlay: "none",
+    layout: "default",
+    coverAndSectionTreatment: "bold",
+    freeformTreatment: "default",
+    fontFamily: "International Inter",
+  };
+}
+
 function parseDeckConfig(deck: DBSlideDeck): SlideDeckConfig {
   if (deck.config) {
     try {
@@ -20,7 +44,7 @@ function parseDeckConfig(deck: DBSlideDeck): SlideDeckConfig {
       // fall through to default
     }
   }
-  return getStartingConfigForSlideDeck(deck.label);
+  return _defaultDeckConfig(deck.label);
 }
 
 export async function getAllSlideDecks(
@@ -89,11 +113,11 @@ export async function createSlideDeck(
   return await tryCatchDatabaseAsync(async () => {
     const deckId = nanoid();
     const lastUpdated = new Date().toISOString();
-    const defaultConfig = getStartingConfigForSlideDeck(label);
+    const defaultConfig = _defaultDeckConfig(label);
 
     await projectDb`
       INSERT INTO slide_decks (id, label, plan, config, folder_id, last_updated)
-      VALUES (${deckId}, ${label}, '', ${JSON.stringify(slideDeckConfigSchema.parse(defaultConfig))}, ${folderId ?? null}, ${lastUpdated})
+      VALUES (${deckId}, ${label}, '', ${JSON.stringify((defaultConfig))}, ${folderId ?? null}, ${lastUpdated})
     `;
 
     return { success: true, data: { deckId, lastUpdated } };
@@ -137,7 +161,7 @@ export async function updateSlideDeckConfig(
     const lastUpdated = new Date().toISOString();
     await projectDb`
       UPDATE slide_decks
-      SET label = ${config.label}, config = ${JSON.stringify(slideDeckConfigSchema.parse(config))}, last_updated = ${lastUpdated}
+      SET label = ${config.label}, config = ${JSON.stringify((config))}, last_updated = ${lastUpdated}
       WHERE id = ${deckId}
     `;
     return { success: true, data: { lastUpdated } };
@@ -177,7 +201,7 @@ export async function duplicateSlideDeck(
     config.label = label.trim();
     await projectDb`
       INSERT INTO slide_decks (id, label, plan, config, folder_id, last_updated)
-      VALUES (${newDeckId}, ${label.trim()}, ${deck.plan ?? ""}, ${JSON.stringify(slideDeckConfigSchema.parse(config))}, ${folderId ?? null}, ${lastUpdated})
+      VALUES (${newDeckId}, ${label.trim()}, ${deck.plan ?? ""}, ${JSON.stringify((config))}, ${folderId ?? null}, ${lastUpdated})
     `;
 
     const slides = await projectDb<{ config: string; sort_order: number }[]>`
@@ -308,7 +332,7 @@ export async function createSlide(
     await projectDb.begin((sql) => [
       sql`
         INSERT INTO slides (id, slide_deck_id, sort_order, config, last_updated)
-        VALUES (${slideId}, ${deckId}, ${newSortOrder}, ${JSON.stringify(slideConfigSchema.parse(slide))}, ${lastUpdated})
+        VALUES (${slideId}, ${deckId}, ${newSortOrder}, ${JSON.stringify((slide))}, ${lastUpdated})
       `,
       sql`UPDATE slide_decks SET last_updated = ${lastUpdated} WHERE id = ${deckId}`,
       _reSequence(sql, deckId),
@@ -334,7 +358,7 @@ export async function updateSlide(
 
     await projectDb.begin((sql) => [
       sql`
-        UPDATE slides SET config = ${JSON.stringify(slideConfigSchema.parse(slide))}, last_updated = ${lastUpdated}
+        UPDATE slides SET config = ${JSON.stringify((slide))}, last_updated = ${lastUpdated}
         WHERE id = ${slideId}
       `,
       sql`UPDATE slide_decks SET last_updated = ${lastUpdated} WHERE id = ${existing.slide_deck_id}`,
