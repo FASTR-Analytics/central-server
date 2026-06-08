@@ -133,6 +133,9 @@ export const serverActions = {
   deleteProject: (args: { id: string }) =>
     apiNoData(`/projects/${args.id}`, { method: "DELETE" }),
 
+  deleteCountryImportData: (args: { projectId: string; sourceServerId: string }) =>
+    apiNoData(`/projects/${args.projectId}/data/${encodeURIComponent(args.sourceServerId)}`, { method: "DELETE" }),
+
   getServers: (_args: Record<string, never>) =>
     fetch(`${_SERVER_HOST}/servers.json`)
       .then(r => r.json())

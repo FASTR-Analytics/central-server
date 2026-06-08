@@ -7,6 +7,7 @@ import {
 import { nanoid } from "nanoid";
 import {
   getPgConnectionFromCacheOrNew,
+  getResultsObjectTableName,
   initProjectDb,
   type DBProject,
   type DBImportHistory,
@@ -303,6 +304,43 @@ routesProjects.get("/projects/:id/users/:email", requireAuth(), async (c) => {
   }
   const targetPerms = await getProjectPermissions(targetEmail, projectId, false);
   return c.json({ success: true, data: targetPerms });
+});
+
+// Delete all data for a source server from a project (requires can_configure_data)
+routesProjects.delete("/projects/:id/data/:sourceServerId", requireAuth(), async (c) => {
+  const projectId = c.req.param("id");
+  const sourceServerId = c.req.param("sourceServerId");
+  const user = c.get("globalUser");
+  const perms = await getProjectPermissions(user.email, projectId, user.isAdmin);
+  if (!perms.can_configure_data) {
+    return c.json({ success: false, err: "Not authorized" }, 403);
+  }
+
+  const mainDb = getPgConnectionFromCacheOrNew("main", "READ_AND_WRITE");
+  const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_AND_WRITE");
+
+  type RORow = { id: string };
+  const resultsObjects = await projectDb<RORow[]>`SELECT id FROM results_objects`;
+
+  for (const ro of resultsObjects) {
+    const tableName = getResultsObjectTableName(ro.id);
+    const tableExists = await projectDb<{ exists: boolean }[]>`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_name = ${tableName}
+      ) AS exists
+    `;
+    if (tableExists.at(0)?.exists) {
+      await projectDb.unsafe(`DELETE FROM ${tableName} WHERE source_server_id = $1`, [sourceServerId]);
+    }
+  }
+
+  await mainDb`
+    DELETE FROM import_history
+    WHERE target_project_id = ${projectId} AND source_server_id = ${sourceServerId}
+  `;
+
+  return c.json({ success: true });
 });
 
 // Remove user from project (requires can_configure_users)

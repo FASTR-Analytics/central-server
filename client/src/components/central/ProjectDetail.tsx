@@ -133,6 +133,35 @@ export function ProjectDetail(p: Props) {
     { key: "nResultsObjects", header: "Objects", sortable: true },
     { key: "nRowsTotal", header: "Rows", sortable: true },
     { key: "status", header: "Status", sortable: true },
+    {
+      key: "actions" as any,
+      header: "",
+      alignH: "right" as const,
+      render: (row) => (
+        <Show when={perms().can_configure_data}>
+          <Button
+            iconName="trash"
+            size="sm"
+            intent="danger"
+            outline
+            onClick={async (e: MouseEvent) => {
+              e.stopPropagation();
+              const confirmed = await openConfirm({
+                text: `Delete all imported data from "${row.sourceServerLabel || row.sourceServerId}"? This cannot be undone.`,
+              });
+              if (!confirmed) return;
+              const res = await serverActions.deleteCountryImportData({
+                projectId: p.projectId,
+                sourceServerId: row.sourceServerId,
+              });
+              if (res.success) {
+                await detailQuery.silentFetch();
+              }
+            }}
+          />
+        </Show>
+      ),
+    },
   ]);
 
   return (
