@@ -9,8 +9,11 @@
   },
   "dependencies": {
     "@clerk/clerk-js": "^5.56.0",
+    "@solid-primitives/deep": "^0.3.2",
     "@solidjs/router": "^0.15.0",
     "@tailwindcss/vite": "^4.1.12",
+    "jspdf": "^3.0.1",
+    "pptxgenjs": "^4.0.1",
     "solid-js": "^1.9.10",
     "tailwindcss": "^4.1.12"
   },

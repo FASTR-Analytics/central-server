@@ -40,6 +40,8 @@ import { serverActions } from "~/server_actions";
 import { clerk } from "~/components/LoggedInWrapper";
 import { VisualizationsList } from "~/components/central/VisualizationsList";
 import { VisualizationEditorEdit, VisualizationEditorCreate } from "~/components/central/VisualizationEditor";
+import { SlideDecksList } from "~/components/central/SlideDecksList";
+import { SlideDeckEditor } from "~/components/slide_deck";
 
 type Props = {
   projectId: string;
@@ -52,6 +54,7 @@ type Props = {
 export function ProjectDetail(p: Props) {
   const [editingPoId, setEditingPoId] = createSignal<string | null | undefined>(undefined);
   // undefined = list view, null = new PO, string = editing existing PO
+  const [editingDeckId, setEditingDeckId] = createSignal<string | undefined>(undefined);
 
   const [navCollapsed, setNavCollapsed] = createSignal(false);
 
@@ -70,23 +73,27 @@ export function ProjectDetail(p: Props) {
         can_view_data: false,
         can_configure_visualizations: false,
         can_view_visualizations: false,
+        can_view_slide_decks: false,
+        can_configure_slide_decks: false,
       };
     }
     return s.data.thisUserPermissions;
   });
 
-  type Tab = "data" | "visualizations" | "settings";
+  type Tab = "data" | "visualizations" | "slide_decks" | "settings";
   const [currentTab, setCurrentTab] = createSignal<Tab>("data");
 
   const tabItems = [
     { id: "data" as const, label: "Data", iconName: "databaseImport" as const },
     { id: "visualizations" as const, label: "Visualizations", iconName: "chart" as const },
+    { id: "slide_decks" as const, label: "Slide Decks", iconName: "presentation" as const },
     { id: "settings" as const, label: "Settings", iconName: "settings" as const },
   ];
 
   function handleTabChange(tab: Tab) {
     setCurrentTab(tab);
     setEditingPoId(undefined);
+    setEditingDeckId(undefined);
   }
 
   const lockAction = timActionButton(
@@ -216,6 +223,34 @@ export function ProjectDetail(p: Props) {
                       projectId={p.projectId}
                       canConfigure={perms().can_configure_visualizations}
                       onOpenEditor={(id) => setEditingPoId(id)}
+                    />
+                  </Match>
+                </Switch>
+              </Show>
+            </Match>
+
+            <Match when={currentTab() === "slide_decks"}>
+              <Show
+                when={perms().can_view_slide_decks}
+                fallback={
+                  <div class="ui-pad text-base-content/40 text-sm">
+                    {detailQuery.state().status === "loading" ? "Loading..." : "No access"}
+                  </div>
+                }
+              >
+                <Switch>
+                  <Match when={editingDeckId() !== undefined}>
+                    <SlideDeckEditor
+                      projectId={p.projectId}
+                      deckId={editingDeckId() as string}
+                      onClose={() => setEditingDeckId(undefined)}
+                    />
+                  </Match>
+                  <Match when={true}>
+                    <SlideDecksList
+                      projectId={p.projectId}
+                      canConfigure={perms().can_configure_slide_decks}
+                      onOpenEditor={(id) => setEditingDeckId(id)}
                     />
                   </Match>
                 </Switch>
@@ -444,6 +479,8 @@ function _EditPermissionsModal(
     can_view_data: p.user.can_view_data,
     can_configure_visualizations: p.user.can_configure_visualizations,
     can_view_visualizations: p.user.can_view_visualizations,
+    can_view_slide_decks: p.user.can_view_slide_decks,
+    can_configure_slide_decks: p.user.can_configure_slide_decks,
   });
 
   const toggle = (key: ProjectPermission) => {

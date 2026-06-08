@@ -7,6 +7,8 @@ export type ProjectUserPermissions = {
   can_view_data: boolean;
   can_configure_visualizations: boolean;
   can_view_visualizations: boolean;
+  can_view_slide_decks: boolean;
+  can_configure_slide_decks: boolean;
 };
 
 export type ProjectPermission = keyof ProjectUserPermissions;
@@ -18,6 +20,8 @@ export const PROJECT_PERMISSIONS: readonly ProjectPermission[] = [
   "can_view_data",
   "can_configure_visualizations",
   "can_view_visualizations",
+  "can_view_slide_decks",
+  "can_configure_slide_decks",
 ] as const;
 
 export const PROJECT_PERMISSION_LABELS: Record<ProjectPermission, string> = {
@@ -27,6 +31,8 @@ export const PROJECT_PERMISSION_LABELS: Record<ProjectPermission, string> = {
   can_view_data: "View import history",
   can_configure_visualizations: "Create and edit visualizations",
   can_view_visualizations: "View visualizations",
+  can_view_slide_decks: "View slide decks",
+  can_configure_slide_decks: "Create and edit slide decks",
 };
 
 export const PERMISSION_PRESETS: { label: string; permissions: ProjectUserPermissions }[] = [
@@ -39,6 +45,8 @@ export const PERMISSION_PRESETS: { label: string; permissions: ProjectUserPermis
       can_view_data: false,
       can_configure_visualizations: false,
       can_view_visualizations: false,
+      can_view_slide_decks: false,
+      can_configure_slide_decks: false,
     },
   },
   {
@@ -50,6 +58,8 @@ export const PERMISSION_PRESETS: { label: string; permissions: ProjectUserPermis
       can_view_data: true,
       can_configure_visualizations: false,
       can_view_visualizations: true,
+      can_view_slide_decks: true,
+      can_configure_slide_decks: false,
     },
   },
   {
@@ -61,6 +71,8 @@ export const PERMISSION_PRESETS: { label: string; permissions: ProjectUserPermis
       can_view_data: true,
       can_configure_visualizations: true,
       can_view_visualizations: true,
+      can_view_slide_decks: true,
+      can_configure_slide_decks: true,
     },
   },
   {
@@ -72,6 +84,8 @@ export const PERMISSION_PRESETS: { label: string; permissions: ProjectUserPermis
       can_view_data: true,
       can_configure_visualizations: true,
       can_view_visualizations: true,
+      can_view_slide_decks: true,
+      can_configure_slide_decks: true,
     },
   },
 ];
@@ -83,6 +97,8 @@ export const _PROJECT_USER_PERMISSIONS_NO_ACCESS: ProjectUserPermissions = {
   can_view_data: false,
   can_configure_visualizations: false,
   can_view_visualizations: false,
+  can_view_slide_decks: false,
+  can_configure_slide_decks: false,
 };
 
 export const _PROJECT_USER_PERMISSIONS_FULL_ACCESS: ProjectUserPermissions = {
@@ -92,6 +108,8 @@ export const _PROJECT_USER_PERMISSIONS_FULL_ACCESS: ProjectUserPermissions = {
   can_view_data: true,
   can_configure_visualizations: true,
   can_view_visualizations: true,
+  can_view_slide_decks: true,
+  can_configure_slide_decks: true,
 };
 
 export type GlobalUser = {

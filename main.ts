@@ -8,6 +8,7 @@ import { routesUsers } from "./server/routes/instance/users.ts";
 import { routesImport } from "./server/routes/instance/import.ts";
 import { routesCentral } from "./server/routes/instance/central.ts";
 import { routesPresentationObjects } from "./server/routes/project/presentation_objects.ts";
+import { routesSlideDeck } from "./server/routes/project/slide_decks.ts";
 
 await dbStartUp();
 
@@ -28,6 +29,7 @@ app.route("/", routesUsers);
 app.route("/", routesImport);
 app.route("/", routesCentral);
 app.route("/", routesPresentationObjects);
+app.route("/", routesSlideDeck);
 
 setupStaticServing(app);
 

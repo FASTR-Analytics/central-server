@@ -42,3 +42,6 @@ CREATE TABLE IF NOT EXISTS project_user_roles (
   can_view_visualizations BOOLEAN NOT NULL DEFAULT FALSE,
   PRIMARY KEY (email, project_id)
 );
+
+ALTER TABLE project_user_roles ADD COLUMN IF NOT EXISTS can_view_slide_decks BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE project_user_roles ADD COLUMN IF NOT EXISTS can_configure_slide_decks BOOLEAN NOT NULL DEFAULT FALSE;

@@ -1,5 +1,7 @@
 import type { APIResponseWithData, APIResponseNoData } from "panther";
 import type { GlobalUser, ProjectSummary, ProjectDetail, CentralReportingProject, InstanceUser, ProjectUser, ProjectUserPermissions } from "lib";
+import type { Slide, SlideDeckConfig, SlidePosition, SlideDeckSummary, SlideDeckDetail, SlideWithMeta } from "platform-lib";
+export type { Slide, SlideDeckConfig, SlidePosition, SlideDeckSummary, SlideDeckDetail, SlideWithMeta };
 
 export type { InstanceUser, ProjectUser, ProjectUserPermissions };
 import type {
@@ -292,4 +294,119 @@ export const serverActions = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ canConfigureUsers: args.canConfigureUsers, canCreateProjects: args.canCreateProjects }),
     }),
+
+  // Slide Decks
+  listSlideDecks: (args: { projectId: string }) =>
+    apiFetch<SlideDeckSummary[]>(`/projects/${args.projectId}/slide_decks`),
+
+  getSlideDeckDetail: (args: { projectId: string; deckId: string }) =>
+    apiFetch<SlideDeckDetail>(`/projects/${args.projectId}/slide_decks/${args.deckId}`),
+
+  createSlideDeck: (args: { projectId: string; label: string; folderId?: string }) =>
+    apiFetch<{ deckId: string; lastUpdated: string }>(`/projects/${args.projectId}/slide_decks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label: args.label, folderId: args.folderId }),
+    }),
+
+  updateSlideDeckLabel: (args: { projectId: string; deckId: string; label: string }) =>
+    apiFetch<{ lastUpdated: string }>(`/projects/${args.projectId}/slide_decks/${args.deckId}/label`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label: args.label }),
+    }),
+
+  updateSlideDeckPlan: (args: { projectId: string; deckId: string; plan: string }) =>
+    apiFetch<{ lastUpdated: string }>(`/projects/${args.projectId}/slide_decks/${args.deckId}/plan`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plan: args.plan }),
+    }),
+
+  updateSlideDeckConfig: (args: { projectId: string; deckId: string; config: SlideDeckConfig }) =>
+    apiFetch<{ lastUpdated: string }>(`/projects/${args.projectId}/slide_decks/${args.deckId}/config`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ config: args.config }),
+    }),
+
+  moveSlideDeckToFolder: (args: { projectId: string; deckId: string; folderId: string | null }) =>
+    apiFetch<{ lastUpdated: string }>(`/projects/${args.projectId}/slide_decks/${args.deckId}/folder`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ folderId: args.folderId }),
+    }),
+
+  duplicateSlideDeck: (args: { projectId: string; deckId: string; label: string; folderId?: string }) =>
+    apiFetch<{ newDeckId: string; lastUpdated: string }>(`/projects/${args.projectId}/slide_decks/${args.deckId}/duplicate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label: args.label, folderId: args.folderId }),
+    }),
+
+  deleteSlideDeck: (args: { projectId: string; deckId: string }) =>
+    apiNoData(`/projects/${args.projectId}/slide_decks/${args.deckId}`, { method: "DELETE" }),
+
+  // Slides
+  getSlides: (args: { projectId: string; deckId: string }) =>
+    apiFetch<SlideWithMeta[]>(`/projects/${args.projectId}/slide_decks/${args.deckId}/slides`),
+
+  getSlide: (args: { projectId: string; slideId: string }) =>
+    apiFetch<SlideWithMeta>(`/projects/${args.projectId}/slides/${args.slideId}`),
+
+  createSlide: (args: { projectId: string; deckId: string; slide: Slide; position: SlidePosition }) =>
+    apiFetch<{ slideId: string; lastUpdated: string }>(`/projects/${args.projectId}/slide_decks/${args.deckId}/slides`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slide: args.slide, position: args.position }),
+    }),
+
+  updateSlide: (args: { projectId: string; slideId: string; slide: Slide }) =>
+    apiFetch<{ lastUpdated: string }>(`/projects/${args.projectId}/slides/${args.slideId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slide: args.slide }),
+    }),
+
+  deleteSlides: (args: { projectId: string; deckId: string; slideIds: string[] }) =>
+    apiFetch<{ deletedCount: number }>(`/projects/${args.projectId}/slide_decks/${args.deckId}/slides`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slideIds: args.slideIds }),
+    }),
+
+  duplicateSlides: (args: { projectId: string; deckId: string; slideIds: string[] }) =>
+    apiFetch<{ newSlideIds: string[]; lastUpdated: string }>(`/projects/${args.projectId}/slide_decks/${args.deckId}/slides/duplicate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slideIds: args.slideIds }),
+    }),
+
+  moveSlides: (args: { projectId: string; deckId: string; slideIds: string[]; position: SlidePosition }) =>
+    apiFetch<{ lastUpdated: string }>(`/projects/${args.projectId}/slide_decks/${args.deckId}/slides/move`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slideIds: args.slideIds, position: args.position }),
+    }),
+
+  // Slide Deck Folders
+  listSlideDeckFolders: (args: { projectId: string }) =>
+    apiFetch<{ id: string; label: string; color: string | null; sortOrder: number }[]>(`/projects/${args.projectId}/slide_deck_folders`),
+
+  createSlideDeckFolder: (args: { projectId: string; label: string }) =>
+    apiFetch<{ folderId: string }>(`/projects/${args.projectId}/slide_deck_folders`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label: args.label }),
+    }),
+
+  updateSlideDeckFolder: (args: { projectId: string; folderId: string; label: string }) =>
+    apiNoData(`/projects/${args.projectId}/slide_deck_folders/${args.folderId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label: args.label }),
+    }),
+
+  deleteSlideDeckFolder: (args: { projectId: string; folderId: string }) =>
+    apiNoData(`/projects/${args.projectId}/slide_deck_folders/${args.folderId}`, { method: "DELETE" }),
 };

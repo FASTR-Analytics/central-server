@@ -38,4 +38,6 @@ export type DBProjectUserRole = {
   can_view_data: boolean;
   can_configure_visualizations: boolean;
   can_view_visualizations: boolean;
+  can_view_slide_decks: boolean;
+  can_configure_slide_decks: boolean;
 };

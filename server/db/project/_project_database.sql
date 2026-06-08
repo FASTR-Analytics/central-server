@@ -63,6 +63,36 @@ CREATE TABLE IF NOT EXISTS presentation_objects (
 
 CREATE INDEX IF NOT EXISTS idx_presentation_objects_metric_id ON presentation_objects(metric_id);
 
+-- Slide deck folders
+CREATE TABLE IF NOT EXISTS slide_deck_folders (
+  id text PRIMARY KEY NOT NULL,
+  label text NOT NULL,
+  color text,
+  sort_order integer NOT NULL DEFAULT 0
+);
+
+-- Slide decks
+CREATE TABLE IF NOT EXISTS slide_decks (
+  id text PRIMARY KEY NOT NULL,
+  label text NOT NULL,
+  plan text,
+  config text,
+  folder_id text REFERENCES slide_deck_folders(id) ON DELETE SET NULL,
+  last_updated text NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_slide_decks_last_updated ON slide_decks(last_updated);
+
+-- Individual slides
+CREATE TABLE IF NOT EXISTS slides (
+  id text PRIMARY KEY NOT NULL,
+  slide_deck_id text NOT NULL REFERENCES slide_decks(id) ON DELETE CASCADE,
+  sort_order integer NOT NULL,
+  config text NOT NULL,
+  last_updated text NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_slides_slide_deck_id ON slides(slide_deck_id);
+CREATE INDEX IF NOT EXISTS idx_slides_deck_sort ON slides(slide_deck_id, sort_order);
+
 -- Calculated indicator label map — imported from country servers
 CREATE TABLE IF NOT EXISTS calculated_indicators_snapshot (
   calculated_indicator_id TEXT PRIMARY KEY NOT NULL,

@@ -52,6 +52,30 @@ export type DBVisualizationFolder = {
   sort_order: number;
 };
 
+export type DBSlideDeck = {
+  id: string;
+  label: string;
+  plan: string | null;
+  config: string | null;
+  folder_id: string | null;
+  last_updated: string;
+};
+
+export type DBSlide = {
+  id: string;
+  slide_deck_id: string;
+  sort_order: number;
+  config: string;
+  last_updated: string;
+};
+
+export type DBSlideDeckFolder = {
+  id: string;
+  label: string;
+  color: string | null;
+  sort_order: number;
+};
+
 export type DBCalculatedIndicatorSnapshot = {
   calculated_indicator_id: string;
   label: string;

@@ -38,6 +38,8 @@ async function getProjectPermissions(
     can_view_data: row.can_view_data,
     can_configure_visualizations: row.can_configure_visualizations,
     can_view_visualizations: row.can_view_visualizations,
+    can_view_slide_decks: row.can_view_slide_decks,
+    can_configure_slide_decks: row.can_configure_slide_decks,
   };
 }
 
@@ -113,6 +115,8 @@ routesProjects.get("/projects/:id", requireAuth(), async (c) => {
       can_view_data: row.can_view_data,
       can_configure_visualizations: row.can_configure_visualizations,
       can_view_visualizations: row.can_view_visualizations,
+      can_view_slide_decks: row.can_view_slide_decks,
+      can_configure_slide_decks: row.can_configure_slide_decks,
     }));
   }
 
@@ -244,6 +248,8 @@ routesProjects.put("/projects/:id/users/:email", requireAuth(), async (c) => {
     can_view_data: boolean;
     can_configure_visualizations: boolean;
     can_view_visualizations: boolean;
+    can_view_slide_decks: boolean;
+    can_configure_slide_decks: boolean;
   }>>();
 
   const mainDb = getPgConnectionFromCacheOrNew("main", "READ_AND_WRITE");
@@ -260,7 +266,8 @@ routesProjects.put("/projects/:id/users/:email", requireAuth(), async (c) => {
     INSERT INTO project_user_roles (
       email, project_id,
       can_configure_settings, can_configure_users, can_configure_data,
-      can_view_data, can_configure_visualizations, can_view_visualizations
+      can_view_data, can_configure_visualizations, can_view_visualizations,
+      can_view_slide_decks, can_configure_slide_decks
     ) VALUES (
       ${targetEmail}, ${projectId},
       ${body.can_configure_settings ?? false},
@@ -268,7 +275,9 @@ routesProjects.put("/projects/:id/users/:email", requireAuth(), async (c) => {
       ${body.can_configure_data ?? false},
       ${body.can_view_data ?? false},
       ${body.can_configure_visualizations ?? false},
-      ${body.can_view_visualizations ?? false}
+      ${body.can_view_visualizations ?? false},
+      ${body.can_view_slide_decks ?? false},
+      ${body.can_configure_slide_decks ?? false}
     )
     ON CONFLICT (email, project_id) DO UPDATE SET
       can_configure_settings = EXCLUDED.can_configure_settings,
@@ -276,7 +285,9 @@ routesProjects.put("/projects/:id/users/:email", requireAuth(), async (c) => {
       can_configure_data = EXCLUDED.can_configure_data,
       can_view_data = EXCLUDED.can_view_data,
       can_configure_visualizations = EXCLUDED.can_configure_visualizations,
-      can_view_visualizations = EXCLUDED.can_view_visualizations
+      can_view_visualizations = EXCLUDED.can_view_visualizations,
+      can_view_slide_decks = EXCLUDED.can_view_slide_decks,
+      can_configure_slide_decks = EXCLUDED.can_configure_slide_decks
   `;
   return c.json({ success: true });
 });
