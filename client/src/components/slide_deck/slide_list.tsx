@@ -347,13 +347,13 @@ export function SlideList(p: Props) {
                 onClick={() => setIsFillWidth(!isFillWidth())}
               />
             </Show>
-            <MenuTriggerWrapper position="bottom-end" items={addSlideMenuItems}>
+            <MenuTriggerWrapper position="bottom-end" items={addSlideMenuItems()}>
               <Button iconName="plus">Add slide</Button>
             </MenuTriggerWrapper>
             <Button iconName="settings" outline onClick={() => p.handleOpenSettings()}>
               Settings
             </Button>
-            <MenuTriggerWrapper position="bottom-end" items={menuItems}>
+            <MenuTriggerWrapper position="bottom-end" items={menuItems()}>
               <Button iconName="moreVertical" outline />
             </MenuTriggerWrapper>
           </div>
