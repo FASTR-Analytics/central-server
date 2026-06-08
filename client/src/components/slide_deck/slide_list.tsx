@@ -371,12 +371,12 @@ export function SlideList(p: Props) {
         <Show when={p.isLoading}>
           <Loading msg="Loading slides..." noPad />
         </Show>
-        <Show when={!p.isLoading && p.slideIds.length === 0}>
+        <Show when={!p.isLoading && sortableSlideItems().length === 0}>
           <div class="text-neutral w-full py-16 text-center">
             No slides yet. Click "Add slide" to create your first slide.
           </div>
         </Show>
-        <Show when={!p.isLoading && p.slideIds.length > 0}>
+        <Show when={sortableSlideItems().length > 0}>
           <SortableVendor
             idField="id"
             items={sortableSlideItems()}
