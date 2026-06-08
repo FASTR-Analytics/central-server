@@ -336,7 +336,8 @@ routesProjects.delete("/projects/:id/data/:sourceServerId", requireAuth(), async
   }
 
   await mainDb`
-    DELETE FROM import_history
+    UPDATE import_history
+    SET status = 'deleted'
     WHERE target_project_id = ${projectId} AND source_server_id = ${sourceServerId}
   `;
 
