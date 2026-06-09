@@ -1,8 +1,31 @@
-node_modules
+# Instance data
 _local_instance_dir/
+secrets/
 servers.json
 
+# Environment files
+.env
+client/.env.development.local
+client/.env.production.local
+
+# Build outputs
 client_dist/
 client_dist.backup/
 module_defs_dist/
 client/dist/
+
+# Dependencies
+node_modules/
+client/node_modules/
+
+# macOS
+.DS_Store
+
+# Claude Code personal settings
+.claude/
+CLAUDE.local.md
+
+.playwright-mcp
+.vscode
+
+CHANGELOG_AUTO.txt
