@@ -1,5 +1,5 @@
 import type { APIResponseWithData, APIResponseNoData } from "panther";
-import type { GlobalUser, ProjectSummary, ProjectDetail, CentralReportingProject, InstanceUser, ProjectUser, ProjectUserPermissions, ProjectMetric, PresentationObjectSummary, PresentationObjectDetail } from "lib";
+import type { GlobalUser, InstanceMeta, ProjectSummary, ProjectDetail, CentralReportingProject, InstanceUser, ProjectUser, ProjectUserPermissions, ProjectMetric, PresentationObjectSummary, PresentationObjectDetail } from "lib";
 export type { ProjectMetric, PresentationObjectSummary, PresentationObjectDetail };
 import type { Slide, SlideDeckConfig, SlidePosition, SlideDeckSummary, SlideDeckDetail, SlideDeckFolder, SlideWithMeta, VisualizationFolder } from "platform-lib";
 export type { Slide, SlideDeckConfig, SlidePosition, SlideDeckSummary, SlideDeckDetail, SlideDeckFolder, SlideWithMeta, VisualizationFolder };
@@ -65,6 +65,9 @@ async function apiNoData(
 export const serverActions = {
   getGlobalUser: (_args: Record<string, never>) =>
     apiFetch<GlobalUser>("/me"),
+
+  getInstanceMeta: (_args: Record<string, never>) =>
+    apiFetch<InstanceMeta>("/instance_meta"),
 
   getProjects: (_args: Record<string, never>) =>
     apiFetch<ProjectSummary[]>("/projects"),
@@ -247,6 +250,13 @@ export const serverActions = {
   deleteUser: (args: { email: string }) =>
     apiFetch<Record<string, never>>(`/users/${encodeURIComponent(args.email)}`, {
       method: "DELETE",
+    }),
+
+  batchUploadUsers: (args: { users: { email: string; is_admin: string }[]; replaceAllExisting: boolean }) =>
+    apiFetch<Record<string, never>>("/users/batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ users: args.users, replaceAllExisting: args.replaceAllExisting }),
     }),
 
   toggleUserAdmin: (args: { email: string; isAdmin: boolean }) =>

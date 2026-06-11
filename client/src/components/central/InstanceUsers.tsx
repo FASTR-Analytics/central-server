@@ -3,6 +3,7 @@ import {
   AlertFormHolder,
   Button,
   Checkbox,
+  Csv,
   FrameTop,
   HeaderBarCanGoBack,
   HeadingBarMainRibbon,
@@ -12,6 +13,7 @@ import {
   Table,
   TextArea,
   type TableColumn,
+  downloadCsv,
   openComponent,
   timActionButton,
   timActionDelete,
@@ -27,8 +29,10 @@ import type {
   ProjectUserPermissions,
 } from "lib";
 import { PERMISSION_PRESETS, PROJECT_PERMISSIONS, PROJECT_PERMISSION_LABELS } from "lib";
+import { t3 } from "platform-lib";
 import { serverActions } from "~/server_actions";
 import { instanceState } from "~/state/instance/t1_store";
+import { BatchUploadUsersForm } from "./batch_upload_users_form";
 
 type Props = {
   globalUser: GlobalUser;
@@ -65,6 +69,32 @@ export function InstanceUsers(p: Props) {
       props: {},
     });
     // SSE (users_last_updated) refreshes the table
+  }
+
+  async function attemptBatchUploadUsers() {
+    await openComponent({
+      element: BatchUploadUsersForm,
+      props: {},
+    });
+    // SSE (users_last_updated) refreshes the table
+  }
+
+  function downloadUsersCSV() {
+    const s = usersQuery.state();
+    if (s.status !== "ready") return;
+    const csv = new Csv({
+      colHeaders: ["email", "is_admin"],
+      aoa: s.data.map((user) => [
+        user.email,
+        String(user.isAdmin),
+      ]),
+    });
+    const today = new Date()
+      .toISOString()
+      .split("T")[0]
+      .replace(/-/g, "_");
+    const filename = `users_export_${today}.csv`;
+    downloadCsv(csv.stringify(), filename);
   }
 
   const columns: TableColumn<InstanceUser>[] = [
@@ -129,9 +159,26 @@ export function InstanceUsers(p: Props) {
         <FrameTop
           panelChildren={
             <HeadingBarMainRibbon heading="Users">
-              <Button onClick={openAddUsers} iconName="plus">
-                Add users
-              </Button>
+              <div class="ui-gap-sm flex items-center">
+                <Button onClick={downloadUsersCSV} iconName="download">
+                  {t3({
+                    en: "Download users",
+                    fr: "Télécharger les utilisateurs",
+                  })}
+                </Button>
+                <Button
+                  onClick={attemptBatchUploadUsers}
+                  iconName="upload"
+                >
+                  {t3({
+                    en: "Batch import from CSV",
+                    fr: "Importation groupée depuis CSV",
+                  })}
+                </Button>
+                <Button onClick={openAddUsers} iconName="plus">
+                  Add users
+                </Button>
+              </div>
             </HeadingBarMainRibbon>
           }
         >

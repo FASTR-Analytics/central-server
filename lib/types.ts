@@ -170,6 +170,18 @@ export type ImportHistoryEntry = {
   status: "success" | "partial" | "failed";
 };
 
+export type InstanceMeta = {
+  instanceName: string;
+  instanceId: string;
+  serverVersion: string;
+  startTime: string;
+  currentTime: string;
+  uptimeMs: number;
+  environment: string;
+  databaseFolder: string;
+  isHealthy: boolean;
+};
+
 export type ProjectMetric = {
   id: string;
   moduleId: string;

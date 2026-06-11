@@ -1,4 +1,4 @@
-import { ButtonGroup, FrameTop, StateHolderWrapper, UserCircleIcon, openComponent, timQuery } from "panther";
+import { Button, ButtonGroup, FrameTop, StateHolderWrapper, UserCircleIcon, openComponent, timQuery } from "panther";
 import { Match, Show, Switch, createEffect, createSignal, on } from "solid-js";
 import type { GlobalUser, ProjectSummary } from "lib";
 import { serverActions } from "~/server_actions";
@@ -7,6 +7,7 @@ import { ProjectsGrid } from "./ProjectsGrid";
 import { ProjectDetail } from "./ProjectDetail";
 import { InstanceUsers } from "./InstanceUsers";
 import { ProfileForm } from "./profile";
+import { InstanceMetaForm } from "./instance_meta_form";
 
 type Tab = "projects" | "users";
 
@@ -50,6 +51,13 @@ export function CentralMain(p: Props) {
     });
   }
 
+  async function openInstanceMeta() {
+    await openComponent({
+      element: InstanceMetaForm,
+      props: {},
+    });
+  }
+
   // When a project is selected, ProjectDetail takes over the full screen with its own FrameTop
   return (
     <Show
@@ -71,13 +79,22 @@ export function CentralMain(p: Props) {
                   />
                 </Show>
               </div>
-              <div
-                class="ui-hoverable ui-gap-sm ui-pad-sm flex items-center rounded"
-                onClick={openProfile}
-              >
-                <span class="text-primary inline-block w-5">
-                  <UserCircleIcon />
-                </span>
+              <div class="ui-gap-sm flex flex-none items-center justify-end">
+                <Show when={p.globalUser.approved}>
+                  <Button
+                    onClick={openInstanceMeta}
+                    iconName="versions"
+                    intent="base-100"
+                  />
+                </Show>
+                <div
+                  class="ui-hoverable ui-gap-sm ui-pad-sm flex items-center rounded"
+                  onClick={openProfile}
+                >
+                  <span class="text-primary inline-block w-5">
+                    <UserCircleIcon />
+                  </span>
+                </div>
               </div>
             </div>
           }

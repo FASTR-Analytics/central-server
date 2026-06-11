@@ -3,6 +3,7 @@ import type { GlobalUser, InstanceUser } from "lib";
 import { requireAdmin } from "../../middleware/auth.ts";
 import { getPgConnectionFromCacheOrNew } from "../../db/mod.ts";
 import type { DBUser } from "../../db/instance/_main_database_types.ts";
+import { batchUploadUsers, type BatchUser } from "../../db/instance/users.ts";
 import {
   notifyInstanceProjectsLastUpdated,
   notifyInstanceUsersLastUpdated,
@@ -37,6 +38,27 @@ routesUsers.post("/users", requireAdmin(), async (c) => {
   }
   notifyInstanceUsersLastUpdated();
   return c.json({ success: true });
+});
+
+routesUsers.post("/users/batch", requireAdmin(), async (c) => {
+  const user = c.get("globalUser");
+  const body = await c.req.json<{ users: BatchUser[]; replaceAllExisting: boolean }>();
+  if (!Array.isArray(body.users)) {
+    return c.json({ success: false, err: "users array required" }, 400);
+  }
+  const mainDb = getPgConnectionFromCacheOrNew("main", "READ_AND_WRITE");
+  // H-users derive admin from config, not the users table — skip the
+  // self-protection checks for them
+  const result = await batchUploadUsers(
+    mainDb,
+    body.users,
+    body.replaceAllExisting,
+    user.isHUser ? undefined : user.email,
+  );
+  if (!result.success) return c.json(result, 400);
+  notifyInstanceUsersLastUpdated();
+  notifyInstanceProjectsLastUpdated();
+  return c.json(result);
 });
 
 routesUsers.delete("/users/:email", requireAdmin(), async (c) => {

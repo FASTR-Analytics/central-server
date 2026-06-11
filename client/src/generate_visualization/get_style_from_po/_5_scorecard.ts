@@ -88,7 +88,7 @@ export function buildScorecardStyle(
             return formatScorecardValue(
               info.valueAsNumber,
               meta.format_as as "percent" | "number" | "rate_per_10k",
-              meta.decimal_places ?? 0,
+              config.s.decimalPlaces ?? 0,
             );
           }
           return String(info.value);
