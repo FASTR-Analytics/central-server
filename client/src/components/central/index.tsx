@@ -1,7 +1,8 @@
 import { ButtonGroup, FrameTop, StateHolderWrapper, timQuery } from "panther";
-import { Match, Show, Switch, createSignal } from "solid-js";
+import { Match, Show, Switch, createEffect, createSignal, on } from "solid-js";
 import type { GlobalUser, ProjectSummary } from "lib";
 import { serverActions } from "~/server_actions";
+import { instanceState } from "~/state/instance/t1_store";
 import { ProjectsGrid } from "./ProjectsGrid";
 import { ProjectDetail } from "./ProjectDetail";
 import { InstanceUsers } from "./InstanceUsers";
@@ -29,11 +30,11 @@ export function CentralMain(p: Props) {
     "Loading projects...",
   );
 
-  const selectedProject = (): ProjectSummary | undefined => {
-    const s = projectsQuery.state();
-    if (s.status !== "ready") return undefined;
-    return s.data.find((pr) => pr.id === selectedProjectId());
-  };
+  createEffect(on(
+    () => instanceState.projectsLastUpdated,
+    () => void projectsQuery.silentFetch(),
+    { defer: true },
+  ));
 
   function handleTabChange(v: string | undefined) {
     if (!v) return;
@@ -94,7 +95,6 @@ export function CentralMain(p: Props) {
                       projects={projects}
                       canCreateProjects={p.globalUser.canCreateProjects}
                       onSelectProject={setSelectedProjectId}
-                      onProjectCreated={projectsQuery.silentFetch}
                     />
                   )}
                 </StateHolderWrapper>
@@ -106,9 +106,7 @@ export function CentralMain(p: Props) {
     >
       <ProjectDetail
         projectId={selectedProjectId()!}
-        project={selectedProject()}
         globalUser={p.globalUser}
-        onProjectUpdated={projectsQuery.silentFetch}
         onBack={() => setSelectedProjectId(null)}
       />
     </Show>

@@ -21,6 +21,7 @@ import {
   duplicateSlides,
   moveSlides,
 } from "../../db/project/slide_decks.ts";
+import { refetchAndNotifySlideDecks } from "../../task_management/refetch_and_notify.ts";
 
 type Env = { Variables: { globalUser: GlobalUser } };
 
@@ -51,6 +52,7 @@ routesSlideDeck.post("/projects/:projectId/slide_decks", requireAuth(), async (c
   const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_AND_WRITE");
   const result = await createSlideDeck(projectDb, body.label, body.folderId);
   if (!result.success) return c.json(result, 500);
+  await refetchAndNotifySlideDecks(projectDb, projectId);
   return c.json(result);
 });
 
@@ -61,6 +63,7 @@ routesSlideDeck.put("/projects/:projectId/slide_decks/:deckId/label", requireAut
   const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_AND_WRITE");
   const result = await updateSlideDeckLabel(projectDb, deckId, body.label);
   if (!result.success) return c.json(result, 500);
+  await refetchAndNotifySlideDecks(projectDb, projectId);
   return c.json(result);
 });
 
@@ -70,6 +73,7 @@ routesSlideDeck.put("/projects/:projectId/slide_decks/:deckId/plan", requireAuth
   const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_AND_WRITE");
   const result = await updateSlideDeckPlan(projectDb, deckId, body.plan ?? "");
   if (!result.success) return c.json(result, 500);
+  await refetchAndNotifySlideDecks(projectDb, projectId);
   return c.json(result);
 });
 
@@ -79,6 +83,7 @@ routesSlideDeck.put("/projects/:projectId/slide_decks/:deckId/config", requireAu
   const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_AND_WRITE");
   const result = await updateSlideDeckConfig(projectDb, deckId, body.config);
   if (!result.success) return c.json(result, 500);
+  await refetchAndNotifySlideDecks(projectDb, projectId);
   return c.json(result);
 });
 
@@ -88,6 +93,7 @@ routesSlideDeck.put("/projects/:projectId/slide_decks/:deckId/folder", requireAu
   const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_AND_WRITE");
   const result = await moveSlideDeckToFolder(projectDb, deckId, body.folderId);
   if (!result.success) return c.json(result, 500);
+  await refetchAndNotifySlideDecks(projectDb, projectId);
   return c.json(result);
 });
 
@@ -98,6 +104,7 @@ routesSlideDeck.post("/projects/:projectId/slide_decks/:deckId/duplicate", requi
   const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_AND_WRITE");
   const result = await duplicateSlideDeck(projectDb, deckId, body.label, body.folderId);
   if (!result.success) return c.json(result, 500);
+  await refetchAndNotifySlideDecks(projectDb, projectId);
   return c.json(result);
 });
 
@@ -106,6 +113,7 @@ routesSlideDeck.delete("/projects/:projectId/slide_decks/:deckId", requireAuth()
   const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_AND_WRITE");
   const result = await deleteSlideDeck(projectDb, deckId);
   if (!result.success) return c.json(result, 500);
+  await refetchAndNotifySlideDecks(projectDb, projectId);
   return c.json(result);
 });
 
@@ -133,6 +141,7 @@ routesSlideDeck.post("/projects/:projectId/slide_decks/:deckId/slides", requireA
   const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_AND_WRITE");
   const result = await createSlide(projectDb, deckId, body.position, body.slide);
   if (!result.success) return c.json(result, 500);
+  await refetchAndNotifySlideDecks(projectDb, projectId);
   return c.json(result);
 });
 
@@ -142,6 +151,7 @@ routesSlideDeck.put("/projects/:projectId/slides/:slideId", requireAuth(), async
   const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_AND_WRITE");
   const result = await updateSlide(projectDb, slideId, body.slide);
   if (!result.success) return c.json(result, 500);
+  await refetchAndNotifySlideDecks(projectDb, projectId);
   return c.json(result);
 });
 
@@ -151,6 +161,7 @@ routesSlideDeck.delete("/projects/:projectId/slide_decks/:deckId/slides", requir
   const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_AND_WRITE");
   const result = await deleteSlides(projectDb, deckId, body.slideIds);
   if (!result.success) return c.json(result, 500);
+  await refetchAndNotifySlideDecks(projectDb, projectId);
   return c.json(result);
 });
 
@@ -160,6 +171,7 @@ routesSlideDeck.post("/projects/:projectId/slide_decks/:deckId/slides/duplicate"
   const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_AND_WRITE");
   const result = await duplicateSlides(projectDb, deckId, body.slideIds);
   if (!result.success) return c.json(result, 500);
+  await refetchAndNotifySlideDecks(projectDb, projectId);
   return c.json(result);
 });
 
@@ -169,6 +181,7 @@ routesSlideDeck.put("/projects/:projectId/slide_decks/:deckId/slides/move", requ
   const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_AND_WRITE");
   const result = await moveSlides(projectDb, deckId, body.slideIds, body.position);
   if (!result.success) return c.json(result, 500);
+  await refetchAndNotifySlideDecks(projectDb, projectId);
   return c.json(result);
 });
 

@@ -8,6 +8,10 @@ import {
   updateSlideDeckFolder,
   deleteSlideDeckFolder,
 } from "../../db/project/slide_deck_folders.ts";
+import {
+  refetchAndNotifySlideDeckFolders,
+  refetchAndNotifySlideDecks,
+} from "../../task_management/refetch_and_notify.ts";
 
 type Env = { Variables: { globalUser: GlobalUser } };
 
@@ -28,6 +32,7 @@ routesSlideDeckFolders.post("/projects/:projectId/slide_deck_folders", requireAu
   const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_AND_WRITE");
   const result = await createSlideDeckFolder(projectDb, body.label, body.color, body.description);
   if (!result.success) return c.json(result, 500);
+  await refetchAndNotifySlideDeckFolders(projectDb, projectId);
   return c.json(result);
 });
 
@@ -38,6 +43,7 @@ routesSlideDeckFolders.put("/projects/:projectId/slide_deck_folders/:folderId", 
   const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_AND_WRITE");
   const result = await updateSlideDeckFolder(projectDb, folderId, body.label, body.color, body.description);
   if (!result.success) return c.json(result, 500);
+  await refetchAndNotifySlideDeckFolders(projectDb, projectId);
   return c.json(result);
 });
 
@@ -46,5 +52,7 @@ routesSlideDeckFolders.delete("/projects/:projectId/slide_deck_folders/:folderId
   const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_AND_WRITE");
   const result = await deleteSlideDeckFolder(projectDb, folderId);
   if (!result.success) return c.json(result, 500);
+  await refetchAndNotifySlideDeckFolders(projectDb, projectId);
+  await refetchAndNotifySlideDecks(projectDb, projectId);
   return c.json(result);
 });

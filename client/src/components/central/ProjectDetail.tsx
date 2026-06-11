@@ -6,7 +6,6 @@ import {
   ModalContainer,
   Select,
   StateHolderFormError,
-  StateHolderWrapper,
   Table,
   TabsNavigation,
   type TableColumn,
@@ -24,9 +23,7 @@ import { For, Match, Show, Switch, createMemo, createSignal } from "solid-js";
 import type {
   CentralReportingProject,
   GlobalUser,
-  ProjectDetail as ProjectDetailType,
   ProjectPermission,
-  ProjectSummary,
   ProjectUser,
   ProjectUserPermissions,
 } from "lib";
@@ -38,6 +35,8 @@ import {
 } from "lib";
 import { serverActions } from "~/server_actions";
 import { clerk } from "~/components/LoggedInWrapper";
+import { projectState } from "~/state/project/t1_store";
+import { ProjectSSEBoundary } from "~/state/project/t1_sse";
 import { VisualizationsList } from "~/components/central/VisualizationsList";
 import { VisualizationEditorEdit, VisualizationEditorCreate } from "~/components/central/VisualizationEditor";
 import { SlideDecksList } from "~/components/central/SlideDecksList";
@@ -45,9 +44,7 @@ import { SlideDeckEditor } from "~/components/slide_deck";
 
 type Props = {
   projectId: string;
-  project: ProjectSummary | undefined;
   globalUser: GlobalUser;
-  onProjectUpdated: () => Promise<void>;
   onBack: () => void;
 };
 
@@ -58,27 +55,7 @@ export function ProjectDetail(p: Props) {
 
   const [navCollapsed, setNavCollapsed] = createSignal(false);
 
-  const detailQuery = timQuery(
-    () => serverActions.getProject({ id: p.projectId }),
-    "Loading...",
-  );
-
-  const perms = createMemo((): ProjectUserPermissions => {
-    const s = detailQuery.state();
-    if (s.status !== "ready") {
-      return {
-        can_configure_settings: false,
-        can_configure_users: false,
-        can_configure_data: false,
-        can_view_data: false,
-        can_configure_visualizations: false,
-        can_view_visualizations: false,
-        can_view_slide_decks: false,
-        can_configure_slide_decks: false,
-      };
-    }
-    return s.data.thisUserPermissions;
-  });
+  const perms = (): ProjectUserPermissions => projectState.thisUserPermissions;
 
   type Tab = "data" | "visualizations" | "slide_decks" | "settings";
   const [currentTab, setCurrentTab] = createSignal<Tab>("data");
@@ -97,18 +74,13 @@ export function ProjectDetail(p: Props) {
   }
 
   const lockAction = timActionButton(
-    async () => {
-      const proj = p.project;
-      if (!proj) return { success: false as const, err: "Project not found" };
-      return serverActions.lockProject({
+    () =>
+      serverActions.lockProject({
         id: p.projectId,
-        lockAction: proj.isLocked ? "unlock" : "lock",
-      });
-    },
-    async () => {
-      await p.onProjectUpdated();
-      detailQuery.silentFetch();
-    },
+        lockAction: projectState.isLocked ? "unlock" : "lock",
+      }),
+    // SSE (project_config_updated) updates projectState
+    () => {},
   );
 
   const deleteAction = timActionButton(
@@ -117,7 +89,7 @@ export function ProjectDetail(p: Props) {
       if (!confirmed) return { success: false as const, err: "Cancelled" };
       return serverActions.deleteProject({ id: p.projectId });
     },
-    p.onProjectUpdated,
+    () => p.onBack(),
   );
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -150,13 +122,11 @@ export function ProjectDetail(p: Props) {
                 text: `Delete all imported data from "${row.sourceServerLabel || row.sourceServerId}"? This cannot be undone.`,
               });
               if (!confirmed) return;
-              const res = await serverActions.deleteCountryImportData({
+              await serverActions.deleteCountryImportData({
                 projectId: p.projectId,
                 sourceServerId: row.sourceServerId,
               });
-              if (res.success) {
-                await detailQuery.silentFetch();
-              }
+              // SSE (import_history_updated) refreshes the table
             }}
           />
         </Show>
@@ -165,12 +135,13 @@ export function ProjectDetail(p: Props) {
   ]);
 
   return (
+    <ProjectSSEBoundary projectId={p.projectId}>
     <FrameTop
       panelChildren={
         <div class="ui-gap ui-pad bg-base-content border-base-content text-base-100 flex h-full w-full items-center border-b">
           <Button iconName="chevronLeft" onClick={p.onBack} />
           <div class="font-700 flex-1 truncate text-xl">
-            <span class="font-400">{p.project?.label ?? ""}</span>
+            <span class="font-400">{projectState.label}</span>
           </div>
         </div>
       }
@@ -194,30 +165,26 @@ export function ProjectDetail(p: Props) {
             <Match when={currentTab() === "data"}>
               <div class="ui-pad flex flex-col gap-6 overflow-auto">
                 <Show when={perms().can_configure_data}>
-                  <_ImportPanel projectId={p.projectId} onImported={detailQuery.silentFetch} />
+                  <_ImportPanel projectId={p.projectId} />
                 </Show>
                 <Show when={perms().can_view_data || perms().can_configure_data}>
-                  <StateHolderWrapper state={detailQuery.state()}>
-                    {(detail: ProjectDetailType) => (
-                      <Show
-                        when={detail.importHistory.length > 0}
-                        fallback={
-                          <div class="text-base-content/40 text-sm">No imports yet</div>
-                        }
-                      >
-                        <div class="flex flex-col gap-2">
-                          <div class="text-base-content/60 text-xs font-700 uppercase tracking-wider">
-                            Import history
-                          </div>
-                          <Table
-                            data={detail.importHistory as any[]}
-                            columns={historyColumns()}
-                            keyField="id"
-                          />
-                        </div>
-                      </Show>
-                    )}
-                  </StateHolderWrapper>
+                  <Show
+                    when={projectState.importHistory.length > 0}
+                    fallback={
+                      <div class="text-base-content/40 text-sm">No imports yet</div>
+                    }
+                  >
+                    <div class="flex flex-col gap-2">
+                      <div class="text-base-content/60 text-xs font-700 uppercase tracking-wider">
+                        Import history
+                      </div>
+                      <Table
+                        data={projectState.importHistory as any[]}
+                        columns={historyColumns()}
+                        keyField="id"
+                      />
+                    </div>
+                  </Show>
                 </Show>
               </div>
             </Match>
@@ -226,9 +193,7 @@ export function ProjectDetail(p: Props) {
               <Show
                 when={perms().can_view_visualizations}
                 fallback={
-                  <div class="ui-pad text-base-content/40 text-sm">
-                    {detailQuery.state().status === "loading" ? "Loading..." : "No access"}
-                  </div>
+                  <div class="ui-pad text-base-content/40 text-sm">No access</div>
                 }
               >
                 <Switch>
@@ -262,9 +227,7 @@ export function ProjectDetail(p: Props) {
               <Show
                 when={perms().can_view_slide_decks}
                 fallback={
-                  <div class="ui-pad text-base-content/40 text-sm">
-                    {detailQuery.state().status === "loading" ? "Loading..." : "No access"}
-                  </div>
+                  <div class="ui-pad text-base-content/40 text-sm">No access</div>
                 }
               >
                 <Switch>
@@ -289,16 +252,10 @@ export function ProjectDetail(p: Props) {
             <Match when={currentTab() === "settings"}>
               <div class="ui-pad flex flex-col gap-6 overflow-auto">
                 <Show when={perms().can_configure_users}>
-                  <StateHolderWrapper state={detailQuery.state()}>
-                    {(detail: ProjectDetailType) => (
-                      <_ProjectUsersSection
-                        projectId={p.projectId}
-                        projectUsers={detail.projectUsers}
-                        globalUser={p.globalUser}
-                        onUpdated={detailQuery.silentFetch}
-                      />
-                    )}
-                  </StateHolderWrapper>
+                  <_ProjectUsersSection
+                    projectId={p.projectId}
+                    globalUser={p.globalUser}
+                  />
                 </Show>
 
                 <Show when={perms().can_configure_settings}>
@@ -309,22 +266,22 @@ export function ProjectDetail(p: Props) {
                     <div class="border-base-300 flex items-center justify-between rounded border p-4">
                       <div class="flex flex-col gap-1">
                         <div class="text-sm font-600">
-                          {p.project?.isLocked ? "Project is locked" : "Project is unlocked"}
+                          {projectState.isLocked ? "Project is locked" : "Project is unlocked"}
                         </div>
                         <div class="text-base-content/50 text-xs">
-                          {p.project?.isLocked
+                          {projectState.isLocked
                             ? "No further imports or edits until unlocked"
                             : "Imports and visualisation edits are allowed"}
                         </div>
                       </div>
                       <Button
-                        intent={p.project?.isLocked ? "warning" : "primary"}
-                        iconName={p.project?.isLocked ? "unlock" : "lock"}
+                        intent={projectState.isLocked ? "warning" : "primary"}
+                        iconName={projectState.isLocked ? "unlock" : "lock"}
                         state={lockAction.state()}
                         onClick={lockAction.click}
                         size="sm"
                       >
-                        {p.project?.isLocked ? "Unlock" : "Lock"}
+                        {projectState.isLocked ? "Unlock" : "Lock"}
                       </Button>
                     </div>
                   </div>
@@ -358,6 +315,7 @@ export function ProjectDetail(p: Props) {
           </Switch>
       </FrameLeft>
     </FrameTop>
+    </ProjectSSEBoundary>
   );
 }
 
@@ -365,9 +323,7 @@ export function ProjectDetail(p: Props) {
 
 type ProjectUsersSectionProps = {
   projectId: string;
-  projectUsers: ProjectUser[];
   globalUser: GlobalUser;
-  onUpdated: () => Promise<void>;
 };
 
 function _ProjectUsersSection(p: ProjectUsersSectionProps) {
@@ -415,7 +371,7 @@ function _ProjectUsersSection(p: ProjectUsersSectionProps) {
                 e.stopPropagation();
                 await openComponent<_EditPermissionsModalProps, undefined>({
                   element: _EditPermissionsModal,
-                  props: { projectId: p.projectId, user: u, onSaved: p.onUpdated },
+                  props: { projectId: p.projectId, user: u },
                 });
               }}
             />
@@ -429,7 +385,7 @@ function _ProjectUsersSection(p: ProjectUsersSectionProps) {
                 const confirmed = await openConfirm({ text: `Remove ${u.email} from this project?` });
                 if (!confirmed) return;
                 await serverActions.removeProjectUser({ projectId: p.projectId, email: u.email });
-                await p.onUpdated();
+                // SSE (project_users_updated) refreshes the table
               }}
             />
           </div>
@@ -448,9 +404,8 @@ function _ProjectUsersSection(p: ProjectUsersSectionProps) {
         permissions: _PROJECT_USER_PERMISSIONS_NO_ACCESS,
       });
     },
-    async () => {
+    () => {
       setAddEmail("");
-      await p.onUpdated();
     },
   );
 
@@ -460,7 +415,7 @@ function _ProjectUsersSection(p: ProjectUsersSectionProps) {
         Project users
       </div>
       <Table
-        data={p.projectUsers}
+        data={projectState.projectUsers}
         columns={userColumns()}
         keyField="email"
         noRowsMessage="No users added yet"
@@ -495,7 +450,6 @@ function _ProjectUsersSection(p: ProjectUsersSectionProps) {
 type _EditPermissionsModalProps = {
   projectId: string;
   user: ProjectUser;
-  onSaved: () => Promise<void>;
 };
 
 function _EditPermissionsModal(
@@ -523,8 +477,7 @@ function _EditPermissionsModal(
         email: p.user.email,
         permissions: permissions(),
       }),
-    async () => {
-      await p.onSaved();
+    () => {
       p.close(undefined);
     },
   );
@@ -582,7 +535,6 @@ function _EditPermissionsModal(
 
 type ImportPanelProps = {
   projectId: string;
-  onImported: () => Promise<void>;
 };
 
 function _ImportPanel(p: ImportPanelProps) {
@@ -646,7 +598,8 @@ function _ImportPanel(p: ImportPanelProps) {
       } else if (event.type === "done") {
         evtSource.close();
         setSelectedProjectId("");
-        try { await p.onImported(); } finally { setImportPhase("idle"); }
+        // SSE (metrics/import_history updates) refreshes project data
+        setImportPhase("idle");
       } else if (event.type === "error") {
         evtSource.close();
         setImportError(event.err);

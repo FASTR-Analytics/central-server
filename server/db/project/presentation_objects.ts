@@ -1,26 +1,9 @@
 import type { Sql } from "postgres";
 import { nanoid } from "nanoid";
+import type { PresentationObjectDetail, PresentationObjectSummary } from "lib";
 import type { DBPresentationObject } from "./_project_database_types.ts";
 
-export type PresentationObjectSummary = {
-  id: string;
-  metricId: string;
-  label: string;
-  type: string;
-  folderId: string | null;
-  sortOrder: number;
-  lastUpdated: string;
-};
-
-export type PresentationObjectDetail = {
-  id: string;
-  metricId: string;
-  label: string;
-  config: unknown;
-  folderId: string | null;
-  sortOrder: number;
-  lastUpdated: string;
-};
+export type { PresentationObjectDetail, PresentationObjectSummary };
 
 function extractType(configJson: string): string {
   try {

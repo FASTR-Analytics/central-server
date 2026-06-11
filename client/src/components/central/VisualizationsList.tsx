@@ -12,7 +12,6 @@ import {
   SelectionCircle,
   SelectList,
   showMenu,
-  StateHolderWrapper,
   timActionDelete,
   timQuery,
   type ListItem,
@@ -27,6 +26,7 @@ import {
 import { parseCentralPresentationObjectConfig } from "~/disaggregation_helpers";
 import { serverActions, type ProjectMetric, type PresentationObjectSummary } from "~/server_actions";
 import { getFigureInputsFromPresentationObject } from "~/generate_visualization/get_figure_inputs_from_po";
+import { projectState } from "~/state/project/t1_store";
 import {
   vizGroupingMode,
   setVizGroupingMode,
@@ -93,25 +93,6 @@ type Props = {
 export function VisualizationsList(p: Props) {
   const [searchText, setSearchText] = createSignal<string>("");
 
-  const listQuery = timQuery(
-    () => serverActions.listPresentationObjects({ projectId: p.projectId }),
-    "Loading visualizations...",
-  );
-
-  const metricsQuery = timQuery(
-    () => serverActions.getProjectMetrics({ projectId: p.projectId }),
-    "Loading metrics...",
-  );
-
-  const foldersQuery = timQuery(
-    () => serverActions.listVisualizationFolders({ projectId: p.projectId }),
-    "Loading folders...",
-  );
-
-  async function refetch() {
-    await Promise.all([listQuery.silentFetch(), foldersQuery.silentFetch()]);
-  }
-
   return (
     <div class="flex h-full w-full min-w-0 flex-col">
       <HeadingBar
@@ -128,28 +109,15 @@ export function VisualizationsList(p: Props) {
         </Show>
       </HeadingBar>
       <div class="min-h-0 w-full flex-1">
-        <StateHolderWrapper state={listQuery.state()}>
-          {(items: PresentationObjectSummary[]) => (
-            <StateHolderWrapper state={metricsQuery.state()}>
-              {(metrics: ProjectMetric[]) => (
-                <StateHolderWrapper state={foldersQuery.state()}>
-                  {(folders: VisualizationFolder[]) => (
-                    <PresentationObjectPanelDisplay
-                      projectId={p.projectId}
-                      visualizations={items}
-                      metrics={metrics}
-                      folders={folders}
-                      searchText={searchText().trim()}
-                      canConfigure={p.canConfigure}
-                      onClick={(po) => p.onOpenEditor(po.id)}
-                      onChanged={refetch}
-                    />
-                  )}
-                </StateHolderWrapper>
-              )}
-            </StateHolderWrapper>
-          )}
-        </StateHolderWrapper>
+        <PresentationObjectPanelDisplay
+          projectId={p.projectId}
+          visualizations={projectState.visualizations}
+          metrics={projectState.metrics}
+          folders={projectState.visualizationFolders}
+          searchText={searchText().trim()}
+          canConfigure={p.canConfigure}
+          onClick={(po) => p.onOpenEditor(po.id)}
+        />
       </div>
     </div>
   );
@@ -163,7 +131,6 @@ type PanelProps = {
   searchText: string;
   canConfigure: boolean;
   onClick: (presentationObject: PresentationObjectSummary) => void;
-  onChanged: () => Promise<void>;
 };
 
 function PresentationObjectPanelDisplay(p: PanelProps) {
@@ -322,7 +289,6 @@ function PresentationObjectPanelDisplay(p: PanelProps) {
               folder,
             },
           });
-          await p.onChanged();
         },
       },
       {
@@ -340,9 +306,7 @@ function PresentationObjectPanelDisplay(p: PanelProps) {
                 projectId: p.projectId,
                 folderId,
               }),
-            () => {
-              p.onChanged();
-            },
+            () => {},
           );
           await deleteAction.click();
         },
@@ -429,7 +393,6 @@ function PresentationObjectPanelDisplay(p: PanelProps) {
                       element: EditFolderModal,
                       props: { projectId: p.projectId },
                     });
-                    await p.onChanged();
                   }}
                 >
                   {t3({ en: "New folder", fr: "Nouveau dossier" })}
@@ -448,7 +411,6 @@ function PresentationObjectPanelDisplay(p: PanelProps) {
         subGroupConfig={subGroupConfig()}
         canConfigure={p.canConfigure}
         onClick={p.onClick}
-        onChanged={p.onChanged}
         searchText={p.searchText}
       />
     </FrameLeftResizable>
@@ -463,7 +425,6 @@ type VisualizationGridProps = {
   subGroupConfig: SubGroupConfig | null;
   canConfigure: boolean;
   onClick: (po: PresentationObjectSummary) => void;
-  onChanged: () => Promise<void>;
   searchText: string;
 };
 
@@ -527,7 +488,6 @@ function VisualizationGrid(p: VisualizationGridProps) {
     });
 
     selection.clear();
-    await p.onChanged();
   }
 
   async function handleDuplicate(po: PresentationObjectSummary) {
@@ -548,7 +508,6 @@ function VisualizationGrid(p: VisualizationGridProps) {
     });
 
     selection.clear();
-    await p.onChanged();
   }
 
   async function handleDelete(po: PresentationObjectSummary) {
@@ -582,7 +541,7 @@ function VisualizationGrid(p: VisualizationGridProps) {
       },
       () => {
         selection.clear();
-        p.onChanged();
+        // SSE will handle refresh
       },
     );
     await deleteAction.click();

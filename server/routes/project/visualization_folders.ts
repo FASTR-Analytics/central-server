@@ -9,6 +9,10 @@ import {
   deleteVisualizationFolder,
 } from "../../db/project/visualization_folders.ts";
 import { updatePresentationObjectFolder } from "../../db/project/presentation_objects.ts";
+import {
+  refetchAndNotifyVisualizationFolders,
+  refetchAndNotifyVisualizations,
+} from "../../task_management/refetch_and_notify.ts";
 
 type Env = { Variables: { globalUser: GlobalUser } };
 
@@ -29,6 +33,7 @@ routesVisualizationFolders.post("/projects/:projectId/visualization_folders", re
   const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_AND_WRITE");
   const result = await createVisualizationFolder(projectDb, body.label, body.color, body.description);
   if (!result.success) return c.json(result, 500);
+  await refetchAndNotifyVisualizationFolders(projectDb, projectId);
   return c.json(result);
 });
 
@@ -39,6 +44,7 @@ routesVisualizationFolders.put("/projects/:projectId/visualization_folders/:fold
   const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_AND_WRITE");
   const result = await updateVisualizationFolder(projectDb, folderId, body.label, body.color, body.description);
   if (!result.success) return c.json(result, 500);
+  await refetchAndNotifyVisualizationFolders(projectDb, projectId);
   return c.json(result);
 });
 
@@ -47,6 +53,8 @@ routesVisualizationFolders.delete("/projects/:projectId/visualization_folders/:f
   const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_AND_WRITE");
   const result = await deleteVisualizationFolder(projectDb, folderId);
   if (!result.success) return c.json(result, 500);
+  await refetchAndNotifyVisualizationFolders(projectDb, projectId);
+  await refetchAndNotifyVisualizations(projectDb, projectId);
   return c.json(result);
 });
 
@@ -56,5 +64,6 @@ routesVisualizationFolders.put("/projects/:projectId/presentation_objects/:id/fo
   const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_AND_WRITE");
   const result = await updatePresentationObjectFolder(projectDb, id, body.folderId);
   if (!result.success) return c.json(result, 500);
+  await refetchAndNotifyVisualizations(projectDb, projectId);
   return c.json(result);
 });

@@ -18,7 +18,7 @@ import {
   timActionForm,
   timQuery,
 } from "panther";
-import { For, Match, Show, Switch, createSignal } from "solid-js";
+import { For, Match, Show, Switch, createEffect, createSignal, on } from "solid-js";
 import type {
   GlobalUser,
   InstanceUser,
@@ -28,6 +28,7 @@ import type {
 } from "lib";
 import { PERMISSION_PRESETS, PROJECT_PERMISSIONS, PROJECT_PERMISSION_LABELS } from "lib";
 import { serverActions } from "~/server_actions";
+import { instanceState } from "~/state/instance/t1_store";
 
 type Props = {
   globalUser: GlobalUser;
@@ -46,12 +47,24 @@ export function InstanceUsers(p: Props) {
     "Loading projects...",
   );
 
+  createEffect(on(
+    () => instanceState.usersLastUpdated,
+    () => void usersQuery.silentFetch(),
+    { defer: true },
+  ));
+
+  createEffect(on(
+    () => instanceState.projectsLastUpdated,
+    () => void projectsQuery.silentFetch(),
+    { defer: true },
+  ));
+
   async function openAddUsers() {
     await openComponent<{}, undefined>({
       element: _AddUsersForm,
       props: {},
     });
-    await usersQuery.silentFetch();
+    // SSE (users_last_updated) refreshes the table
   }
 
   const columns: TableColumn<InstanceUser>[] = [
@@ -109,7 +122,6 @@ export function InstanceUsers(p: Props) {
               return s.status === "ready" ? s.data : [];
             })()}
             close={() => setSelectedUser(undefined)}
-            onChanged={usersQuery.silentFetch}
           />
         )}
       </Match>
@@ -152,7 +164,6 @@ type UserDetailProps = {
   globalUser: GlobalUser;
   projects: ProjectSummary[];
   close: () => void;
-  onChanged: () => Promise<void>;
 };
 
 function _UserDetail(p: UserDetailProps) {
@@ -168,17 +179,15 @@ function _UserDetail(p: UserDetailProps) {
 
   const makeAdmin = timActionButton(
     () => serverActions.toggleUserAdmin({ email: p.user.email, isAdmin: true }),
-    async () => {
+    () => {
       setIsAdmin(true);
-      await p.onChanged();
     },
   );
 
   const makeNonAdmin = timActionButton(
     () => serverActions.toggleUserAdmin({ email: p.user.email, isAdmin: false }),
-    async () => {
+    () => {
       setIsAdmin(false);
-      await p.onChanged();
     },
   );
 
@@ -189,10 +198,9 @@ function _UserDetail(p: UserDetailProps) {
         canConfigureUsers: canConfigureUsers(),
         canCreateProjects: canCreateProjects(),
       }),
-    async () => {
+    () => {
       setOriginalCanConfigureUsers(canConfigureUsers());
       setOriginalCanCreateProjects(canCreateProjects());
-      await p.onChanged();
     },
   );
 
@@ -207,8 +215,7 @@ function _UserDetail(p: UserDetailProps) {
     const action = timActionDelete(
       { text: `Are you sure you want to remove ${p.user.email}?`, itemList: [p.user.email] },
       () => serverActions.deleteUser({ email: p.user.email }),
-      async () => {
-        await p.onChanged();
+      () => {
         p.close();
       },
     );

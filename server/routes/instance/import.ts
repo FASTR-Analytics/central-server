@@ -2,6 +2,11 @@ import { Hono } from "hono";
 import type { GlobalUser, CentralExportPayload } from "lib";
 import { getPgConnectionFromCacheOrNew, getResultsObjectTableName, initProjectDb, type DBProject } from "../../db/mod.ts";
 import { requireHUser } from "../../middleware/auth.ts";
+import { notifyInstanceProjectsLastUpdated } from "../../task_management/notify_instance_updated.ts";
+import {
+  refetchAndNotifyImportHistory,
+  refetchAndNotifyMetrics,
+} from "../../task_management/refetch_and_notify.ts";
 
 type Env = { Variables: { globalUser: GlobalUser } };
 
@@ -238,5 +243,10 @@ routesImport.post("/import_result_objects", requireHUser(), async (c) => {
   if (!result.success) {
     return c.json(result, (result.status ?? 500) as 400 | 404 | 409 | 500);
   }
+  const mainDb = getPgConnectionFromCacheOrNew("main", "READ_ONLY");
+  const projectDb = getPgConnectionFromCacheOrNew(body.targetProjectId, "READ_ONLY");
+  await refetchAndNotifyMetrics(projectDb, body.targetProjectId);
+  await refetchAndNotifyImportHistory(mainDb, body.targetProjectId);
+  notifyInstanceProjectsLastUpdated();
   return c.json(result);
 });

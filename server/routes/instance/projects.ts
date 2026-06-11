@@ -1,47 +1,37 @@
 import { Hono } from "hono";
-import type { GlobalUser, ProjectUserPermissions, ProjectUser } from "lib";
-import {
-  _PROJECT_USER_PERMISSIONS_NO_ACCESS,
-  _PROJECT_USER_PERMISSIONS_FULL_ACCESS,
-} from "lib";
+import type { GlobalUser, ProjectUserPermissions } from "lib";
 import { nanoid } from "nanoid";
 import {
   getPgConnectionFromCacheOrNew,
   getResultsObjectTableName,
   initProjectDb,
   type DBProject,
-  type DBImportHistory,
-  type DBProjectUserRole,
-  type DBUser,
 } from "../../db/mod.ts";
-import { requireAuth, requireHUser } from "../../middleware/auth.ts";
+import {
+  getImportHistory,
+  getProjectPermissions as getProjectPermissionsDb,
+  getProjectRow,
+  getProjectUsers,
+} from "../../db/instance/projects.ts";
+import { requireAuth } from "../../middleware/auth.ts";
+import { notifyInstanceProjectsLastUpdated } from "../../task_management/notify_instance_updated.ts";
+import { notifyProjectConfigUpdated } from "../../task_management/notify_project_v2.ts";
+import {
+  refetchAndNotifyImportHistory,
+  refetchAndNotifyProjectUsers,
+} from "../../task_management/refetch_and_notify.ts";
 
 type Env = { Variables: { globalUser: GlobalUser } };
 
 export const routesProjects = new Hono<Env>();
 
-async function getProjectPermissions(
+function getProjectPermissions(
   email: string,
   projectId: string,
   isAdmin: boolean,
 ): Promise<ProjectUserPermissions> {
-  if (isAdmin) return _PROJECT_USER_PERMISSIONS_FULL_ACCESS;
   const mainDb = getPgConnectionFromCacheOrNew("main", "READ_ONLY");
-  const rows = await mainDb<DBProjectUserRole[]>`
-    SELECT * FROM project_user_roles WHERE email = ${email} AND project_id = ${projectId}
-  `;
-  const row = rows.at(0);
-  if (!row) return _PROJECT_USER_PERMISSIONS_NO_ACCESS;
-  return {
-    can_configure_settings: row.can_configure_settings,
-    can_configure_users: row.can_configure_users,
-    can_configure_data: row.can_configure_data,
-    can_view_data: row.can_view_data,
-    can_configure_visualizations: row.can_configure_visualizations,
-    can_view_visualizations: row.can_view_visualizations,
-    can_view_slide_decks: row.can_view_slide_decks,
-    can_configure_slide_decks: row.can_configure_slide_decks,
-  };
+  return getProjectPermissionsDb(mainDb, email, projectId, isAdmin);
 }
 
 // List projects — admins see all; others see only their projects
@@ -81,45 +71,20 @@ routesProjects.get("/projects/:id", requireAuth(), async (c) => {
   const user = c.get("globalUser");
   const mainDb = getPgConnectionFromCacheOrNew("main", "READ_ONLY");
 
-  const projectRow = await mainDb<DBProject[]>`SELECT * FROM projects WHERE id = ${projectId}`;
-  const project = projectRow.at(0);
+  const project = await getProjectRow(mainDb, projectId);
   if (!project) return c.json({ success: false, err: "Not found" }, 404);
 
   const perms = await getProjectPermissions(user.email, projectId, user.isAdmin);
 
   // Only show history if user can view data
-  const history = (perms.can_view_data || perms.can_configure_data)
-    ? await mainDb<DBImportHistory[]>`
-        SELECT * FROM import_history WHERE target_project_id = ${projectId} ORDER BY imported_at DESC
-      `
+  const importHistory = (perms.can_view_data || perms.can_configure_data)
+    ? await getImportHistory(mainDb, projectId)
     : [];
 
   // Only load project users if user can manage them
-  let projectUsers: ProjectUser[] = [];
-  if (perms.can_configure_users) {
-    type JoinRow = DBProjectUserRole & { first_name: string | null; last_name: string | null; is_admin: boolean };
-    const rows = await mainDb<JoinRow[]>`
-      SELECT pur.*, u.first_name, u.last_name, u.is_admin
-      FROM project_user_roles pur
-      JOIN users u ON pur.email = u.email
-      WHERE pur.project_id = ${projectId}
-      ORDER BY pur.email
-    `;
-    projectUsers = rows.map((row) => ({
-      email: row.email,
-      firstName: row.first_name ?? undefined,
-      lastName: row.last_name ?? undefined,
-      isAdmin: row.is_admin,
-      can_configure_settings: row.can_configure_settings,
-      can_configure_users: row.can_configure_users,
-      can_configure_data: row.can_configure_data,
-      can_view_data: row.can_view_data,
-      can_configure_visualizations: row.can_configure_visualizations,
-      can_view_visualizations: row.can_view_visualizations,
-      can_view_slide_decks: row.can_view_slide_decks,
-      can_configure_slide_decks: row.can_configure_slide_decks,
-    }));
-  }
+  const projectUsers = perms.can_configure_users
+    ? await getProjectUsers(mainDb, projectId)
+    : [];
 
   return c.json({
     success: true,
@@ -129,17 +94,7 @@ routesProjects.get("/projects/:id", requireAuth(), async (c) => {
       isLocked: project.is_locked,
       status: project.status,
       createdAt: project.created_at.toISOString(),
-      importHistory: history.map((h) => ({
-        id: h.id,
-        sourceServerId: h.source_server_id,
-        sourceServerLabel: h.source_server_label,
-        sourceProjectId: h.source_project_id,
-        importedAt: h.imported_at.toISOString(),
-        importedBy: h.imported_by,
-        nResultsObjects: h.n_results_objects,
-        nRowsTotal: h.n_rows_total,
-        status: h.status,
-      })),
+      importHistory,
       thisUserPermissions: perms,
       projectUsers,
     },
@@ -175,6 +130,7 @@ routesProjects.post("/projects", requireAuth(), async (c) => {
   const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_AND_WRITE");
   await initProjectDb(projectDb);
 
+  notifyInstanceProjectsLastUpdated();
   return c.json({ success: true, data: { id: projectId } });
 });
 
@@ -189,10 +145,13 @@ routesProjects.put("/projects/:id", requireAuth(), async (c) => {
   const { label } = await c.req.json<{ label: string }>();
   if (!label?.trim()) return c.json({ success: false, err: "Label required" }, 400);
   const mainDb = getPgConnectionFromCacheOrNew("main", "READ_AND_WRITE");
-  const result = await mainDb<{ id: string }[]>`
-    UPDATE projects SET label = ${label.trim()} WHERE id = ${projectId} RETURNING id
+  const result = await mainDb<{ id: string; is_locked: boolean }[]>`
+    UPDATE projects SET label = ${label.trim()} WHERE id = ${projectId} RETURNING id, is_locked
   `;
-  if (!result.at(0)) return c.json({ success: false, err: "Not found" }, 404);
+  const updated = result.at(0);
+  if (!updated) return c.json({ success: false, err: "Not found" }, 404);
+  notifyProjectConfigUpdated(projectId, label.trim(), updated.is_locked);
+  notifyInstanceProjectsLastUpdated();
   return c.json({ success: true });
 });
 
@@ -206,10 +165,13 @@ routesProjects.post("/projects/:id/lock", requireAuth(), async (c) => {
   }
   const { lockAction } = await c.req.json<{ lockAction: "lock" | "unlock" }>();
   const mainDb = getPgConnectionFromCacheOrNew("main", "READ_AND_WRITE");
-  const result = await mainDb<{ id: string }[]>`
-    UPDATE projects SET is_locked = ${lockAction === "lock"} WHERE id = ${projectId} RETURNING id
+  const result = await mainDb<{ id: string; label: string }[]>`
+    UPDATE projects SET is_locked = ${lockAction === "lock"} WHERE id = ${projectId} RETURNING id, label
   `;
-  if (!result.at(0)) return c.json({ success: false, err: "Not found" }, 404);
+  const updated = result.at(0);
+  if (!updated) return c.json({ success: false, err: "Not found" }, 404);
+  notifyProjectConfigUpdated(projectId, updated.label, lockAction === "lock");
+  notifyInstanceProjectsLastUpdated();
   return c.json({ success: true, data: { isLocked: lockAction === "lock" } });
 });
 
@@ -229,6 +191,7 @@ routesProjects.delete("/projects/:id", requireAuth(), async (c) => {
     RETURNING id
   `;
   if (!result.at(0)) return c.json({ success: false, err: "Not found" }, 404);
+  notifyInstanceProjectsLastUpdated();
   return c.json({ success: true });
 });
 
@@ -290,6 +253,8 @@ routesProjects.put("/projects/:id/users/:email", requireAuth(), async (c) => {
       can_view_slide_decks = EXCLUDED.can_view_slide_decks,
       can_configure_slide_decks = EXCLUDED.can_configure_slide_decks
   `;
+  await refetchAndNotifyProjectUsers(mainDb, projectId);
+  notifyInstanceProjectsLastUpdated();
   return c.json({ success: true });
 });
 
@@ -341,6 +306,7 @@ routesProjects.delete("/projects/:id/data/:sourceServerId", requireAuth(), async
     WHERE target_project_id = ${projectId} AND source_server_id = ${sourceServerId}
   `;
 
+  await refetchAndNotifyImportHistory(mainDb, projectId);
   return c.json({ success: true });
 });
 
@@ -355,5 +321,7 @@ routesProjects.delete("/projects/:id/users/:email", requireAuth(), async (c) => 
   }
   const mainDb = getPgConnectionFromCacheOrNew("main", "READ_AND_WRITE");
   await mainDb`DELETE FROM project_user_roles WHERE email = ${targetEmail} AND project_id = ${projectId}`;
+  await refetchAndNotifyProjectUsers(mainDb, projectId);
+  notifyInstanceProjectsLastUpdated();
   return c.json({ success: true });
 });

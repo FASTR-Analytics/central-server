@@ -5,6 +5,11 @@ import { requireHUser } from "../../middleware/auth.ts";
 import { doImport, insertRowsChunk } from "./import.ts";
 import { getPgConnectionFromCacheOrNew, getResultsObjectTableName } from "../../db/mod.ts";
 import { _BYPASS_AUTH, _CENTRAL_SERVER_SECRET, _SERVERS_FILE_PATH } from "../../exposed_env_vars.ts";
+import { notifyInstanceProjectsLastUpdated } from "../../task_management/notify_instance_updated.ts";
+import {
+  refetchAndNotifyImportHistory,
+  refetchAndNotifyMetrics,
+} from "../../task_management/refetch_and_notify.ts";
 
 type Env = { Variables: { globalUser: GlobalUser } };
 
@@ -153,6 +158,8 @@ async function runImportJob(jobId: string) {
 
     const result = await doImport({ ...exportPayload, targetProjectId }, "system");
     if (!result.success) {
+      const mainDb = getPgConnectionFromCacheOrNew("main", "READ_ONLY");
+      await refetchAndNotifyImportHistory(mainDb, targetProjectId);
       send({ type: "error", err: result.err });
       return;
     }
@@ -166,6 +173,11 @@ async function runImportJob(jobId: string) {
       await insertRowsChunk(projectDb, tableName, rows, exportPayload.sourceInstanceId);
       send({ type: "inserting", index: i + 1, total: insertTotal });
     }
+
+    const mainDb = getPgConnectionFromCacheOrNew("main", "READ_ONLY");
+    await refetchAndNotifyMetrics(projectDb, targetProjectId);
+    await refetchAndNotifyImportHistory(mainDb, targetProjectId);
+    notifyInstanceProjectsLastUpdated();
 
     send({ type: "done", nResultsObjects: result.data.nResultsObjects, nRowsTotal: result.data.nRowsTotal });
   } catch (err) {

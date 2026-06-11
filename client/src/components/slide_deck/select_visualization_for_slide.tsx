@@ -4,15 +4,14 @@ import {
   FrameTop,
   HeadingBar,
   openAlert,
-  StateHolderWrapper,
-  timQuery,
 } from "panther";
 import type { FigureBlock, PeriodOption } from "platform-lib";
 import { getFetchConfigFromPresentationObjectConfig } from "platform-lib";
 import { createSignal, For, Show } from "solid-js";
 import { parseCentralPresentationObjectConfig } from "~/disaggregation_helpers";
-import { serverActions, type ProjectMetric, type PresentationObjectSummary } from "~/server_actions";
+import { serverActions, type PresentationObjectSummary } from "~/server_actions";
 import { getFigureInputsFromPresentationObject } from "~/generate_visualization/get_figure_inputs_from_po";
+import { projectState } from "~/state/project/t1_store";
 
 type Props = AlertComponentProps<{ projectId: string }, FigureBlock>;
 
@@ -21,20 +20,8 @@ export function SelectVisualizationForSlide(p: Props) {
   const [isComputing, setIsComputing] = createSignal(false);
   const [searchText, setSearchText] = createSignal("");
 
-  const poListQuery = timQuery(
-    () => serverActions.listPresentationObjects({ projectId: p.projectId }),
-    "Loading visualizations...",
-  );
-
-  const metricsQuery = timQuery(
-    () => serverActions.getProjectMetrics({ projectId: p.projectId }),
-    "Loading metrics...",
-  );
-
   const filteredList = () => {
-    const state = poListQuery.state();
-    if (state.status !== "ready") return [];
-    const items = state.data as PresentationObjectSummary[];
+    const items = projectState.visualizations;
     const q = searchText().toLowerCase().trim();
     if (!q) return items;
     return items.filter((po) => po.label.toLowerCase().includes(q));
@@ -44,12 +31,7 @@ export function SelectVisualizationForSlide(p: Props) {
     const po = selectedPo();
     if (!po) return;
 
-    const metricsState = metricsQuery.state();
-    if (metricsState.status !== "ready") {
-      await openAlert({ text: "Metrics are still loading, please try again", intent: "danger" });
-      return;
-    }
-    const metrics = (metricsState as { status: "ready"; data: ProjectMetric[] }).data;
+    const metrics = projectState.metrics;
 
     setIsComputing(true);
     try {
@@ -188,32 +170,28 @@ export function SelectVisualizationForSlide(p: Props) {
         </HeadingBar>
       }
     >
-      <StateHolderWrapper state={poListQuery.state()}>
-        {(_items) => (
-          <div class="h-full overflow-auto">
-            <For each={filteredList()}>
-              {(po) => (
-                <div
-                  class="cursor-pointer border-b px-4 py-3 hover:bg-base-100"
-                  classList={{
-                    "bg-primary/10": selectedPo()?.id === po.id,
-                    "border-base-200": selectedPo()?.id !== po.id,
-                    "border-primary": selectedPo()?.id === po.id,
-                  }}
-                  onClick={() => setSelectedPo(po)}
-                >
-                  <div class="text-sm font-medium">{po.label}</div>
-                </div>
-              )}
-            </For>
-            <Show when={filteredList().length === 0}>
-              <div class="text-base-content/40 p-8 text-center text-sm">
-                {searchText() ? "No matching visualizations" : "No visualizations available"}
-              </div>
-            </Show>
+      <div class="h-full overflow-auto">
+        <For each={filteredList()}>
+          {(po) => (
+            <div
+              class="cursor-pointer border-b px-4 py-3 hover:bg-base-100"
+              classList={{
+                "bg-primary/10": selectedPo()?.id === po.id,
+                "border-base-200": selectedPo()?.id !== po.id,
+                "border-primary": selectedPo()?.id === po.id,
+              }}
+              onClick={() => setSelectedPo(po)}
+            >
+              <div class="text-sm font-medium">{po.label}</div>
+            </div>
+          )}
+        </For>
+        <Show when={filteredList().length === 0}>
+          <div class="text-base-content/40 p-8 text-center text-sm">
+            {searchText() ? "No matching visualizations" : "No visualizations available"}
           </div>
-        )}
-      </StateHolderWrapper>
+        </Show>
+      </div>
     </FrameTop>
   );
 }

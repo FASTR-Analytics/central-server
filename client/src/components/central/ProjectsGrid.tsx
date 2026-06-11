@@ -16,7 +16,6 @@ type Props = {
   projects: ProjectSummary[];
   canCreateProjects: boolean;
   onSelectProject: (id: string) => void;
-  onProjectCreated: () => Promise<void>;
 };
 
 function formatTimeAgo(isoString: string): string {
@@ -71,12 +70,11 @@ export function ProjectsGrid(p: Props) {
   const visibleProjects = () => p.projects.filter((pr) => pr.status !== "pending_deletion");
 
   async function attemptCreateProject() {
-    const res = await openComponent<{}, { id: string }>({
+    await openComponent<{}, { id: string }>({
       element: _CreateProjectForm,
       props: {},
     });
-    if (res === undefined) return;
-    await p.onProjectCreated();
+    // SSE (projects_last_updated) refreshes the projects list
   }
 
   return (

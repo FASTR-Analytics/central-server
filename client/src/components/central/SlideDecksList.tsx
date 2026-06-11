@@ -12,9 +12,7 @@ import {
   SelectionCircle,
   SelectList,
   showMenu,
-  StateHolderWrapper,
   timActionDelete,
-  timQuery,
   getQueryStateFromApiResponse,
   type ListItem,
   type MenuItem,
@@ -30,6 +28,7 @@ import {
 import { createEffect, createSignal, For, Show } from "solid-js";
 import { convertSlideToPageInputs } from "~/generate_slide_deck/convert_slide_to_page_inputs";
 import { serverActions } from "~/server_actions";
+import { projectState } from "~/state/project/t1_store";
 import {
   deckGroupingMode,
   setDeckGroupingMode,
@@ -64,21 +63,7 @@ type Props = {
 export function SlideDecksList(p: Props) {
   const [searchText, setSearchText] = createSignal<string>("");
 
-  const listQuery = timQuery(
-    () => serverActions.listSlideDecks({ projectId: p.projectId }),
-    "Loading slide decks...",
-  );
-
-  const foldersQuery = timQuery(
-    () => serverActions.listSlideDeckFolders({ projectId: p.projectId }),
-    "Loading folders...",
-  );
-
-  async function refetch() {
-    await Promise.all([listQuery.silentFetch(), foldersQuery.silentFetch()]);
-  }
-
-  async function attemptAddDeck(folders: SlideDeckFolder[]) {
+  async function attemptAddDeck() {
     const group = deckSelectedGroup();
     const currentFolderId =
       deckGroupingMode() === "folders" && group && !group.startsWith("_")
@@ -88,14 +73,13 @@ export function SlideDecksList(p: Props) {
       element: AddDeckForm,
       props: {
         projectId: p.projectId,
-        folders,
+        folders: projectState.slideDeckFolders,
         currentFolderId,
       },
     });
     if (res === undefined) {
       return;
     }
-    await refetch();
     p.onOpenEditor(res.newDeckId);
   }
 
@@ -109,37 +93,20 @@ export function SlideDecksList(p: Props) {
         ensureHeightAsIfButton
       >
         <Show when={p.canConfigure}>
-          <Button
-            intent="primary"
-            iconName="plus"
-            size="sm"
-            onClick={() => {
-              const s = foldersQuery.state();
-              attemptAddDeck(s.status === "ready" ? s.data : []);
-            }}
-          >
+          <Button intent="primary" iconName="plus" size="sm" onClick={attemptAddDeck}>
             {t3({ en: "Create slide deck", fr: "Créer une présentation" })}
           </Button>
         </Show>
       </HeadingBar>
       <div class="min-h-0 w-full flex-1">
-        <StateHolderWrapper state={listQuery.state()}>
-          {(items: SlideDeckSummary[]) => (
-            <StateHolderWrapper state={foldersQuery.state()}>
-              {(folders: SlideDeckFolder[]) => (
-                <SlideDecksPanelDisplay
-                  projectId={p.projectId}
-                  decks={items}
-                  folders={folders}
-                  searchText={searchText().trim()}
-                  canConfigure={p.canConfigure}
-                  onOpenEditor={p.onOpenEditor}
-                  onChanged={refetch}
-                />
-              )}
-            </StateHolderWrapper>
-          )}
-        </StateHolderWrapper>
+        <SlideDecksPanelDisplay
+          projectId={p.projectId}
+          decks={projectState.slideDecks}
+          folders={projectState.slideDeckFolders}
+          searchText={searchText().trim()}
+          canConfigure={p.canConfigure}
+          onOpenEditor={p.onOpenEditor}
+        />
       </div>
     </div>
   );
@@ -152,7 +119,6 @@ type PanelProps = {
   searchText: string;
   canConfigure: boolean;
   onOpenEditor: (id: string) => void;
-  onChanged: () => Promise<void>;
 };
 
 function SlideDecksPanelDisplay(p: PanelProps) {
@@ -246,7 +212,6 @@ function SlideDecksPanelDisplay(p: PanelProps) {
     });
 
     selection.clear();
-    await p.onChanged();
   }
 
   async function handleDuplicate(deck: SlideDeckSummary) {
@@ -267,7 +232,6 @@ function SlideDecksPanelDisplay(p: PanelProps) {
     });
 
     selection.clear();
-    await p.onChanged();
   }
 
   async function handleDelete(deck: SlideDeckSummary) {
@@ -296,7 +260,7 @@ function SlideDecksPanelDisplay(p: PanelProps) {
       },
       () => {
         selection.clear();
-        p.onChanged();
+        // SSE will handle refresh
       },
     );
     await deleteAction.click();
@@ -358,7 +322,6 @@ function SlideDecksPanelDisplay(p: PanelProps) {
               folder,
             },
           });
-          await p.onChanged();
         },
       },
       {
@@ -373,9 +336,7 @@ function SlideDecksPanelDisplay(p: PanelProps) {
                 projectId: p.projectId,
                 folderId,
               }),
-            () => {
-              p.onChanged();
-            },
+            () => {},
           );
           await deleteAction.click();
         },
@@ -459,7 +420,6 @@ function SlideDecksPanelDisplay(p: PanelProps) {
                       element: EditDeckFolderModal,
                       props: { projectId: p.projectId },
                     });
-                    await p.onChanged();
                   }}
                 >
                   {t3({ en: "New folder", fr: "Nouveau dossier" })}

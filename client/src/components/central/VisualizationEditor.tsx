@@ -27,6 +27,7 @@ import {
   get_DISAGGREGATION_DISPLAY_OPTIONS,
 } from "platform-lib";
 import { isCentralDisaggregationOption, parseCentralPresentationObjectConfig } from "~/disaggregation_helpers";
+import { projectState } from "~/state/project/t1_store";
 import {
   serverActions,
   type ProjectMetric,
@@ -57,13 +58,9 @@ export function VisualizationEditorEdit(p: EditProps) {
   };
 
   const query = timQuery<CombinedData>(async () => {
-    const [metricsRes, poRes] = await Promise.all([
-      serverActions.getProjectMetrics({ projectId: p.projectId }),
-      serverActions.getPresentationObject({ projectId: p.projectId, id: p.poId }),
-    ]);
-    if (!metricsRes.success) return metricsRes;
+    const poRes = await serverActions.getPresentationObject({ projectId: p.projectId, id: p.poId });
     if (!poRes.success) return poRes;
-    const metric = metricsRes.data.find((m) => m.id === poRes.data.metricId);
+    const metric = projectState.metrics.find((m) => m.id === poRes.data.metricId);
     if (!metric) return { success: false, err: "Metric not found" } as const;
     try {
       const config = parseCentralPresentationObjectConfig(JSON.stringify(poRes.data.config));
@@ -101,23 +98,14 @@ type CreateProps = {
 };
 
 export function VisualizationEditorCreate(p: CreateProps) {
-  const metricsQuery = timQuery(
-    () => serverActions.getProjectMetrics({ projectId: p.projectId }),
-    "Loading metrics...",
-  );
-
   return (
     <div class="flex h-full w-full min-w-0 flex-col">
-      <StateHolderWrapper state={metricsQuery.state()}>
-        {(metrics: ProjectMetric[]) => (
-          <_CreateWithMetrics
-            projectId={p.projectId}
-            metrics={metrics}
-            onClose={p.onClose}
-            onSaved={p.onSaved}
-          />
-        )}
-      </StateHolderWrapper>
+      <_CreateWithMetrics
+        projectId={p.projectId}
+        metrics={projectState.metrics}
+        onClose={p.onClose}
+        onSaved={p.onSaved}
+      />
     </div>
   );
 }

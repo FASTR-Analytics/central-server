@@ -1,5 +1,6 @@
 import type { APIResponseWithData, APIResponseNoData } from "panther";
-import type { GlobalUser, ProjectSummary, ProjectDetail, CentralReportingProject, InstanceUser, ProjectUser, ProjectUserPermissions } from "lib";
+import type { GlobalUser, ProjectSummary, ProjectDetail, CentralReportingProject, InstanceUser, ProjectUser, ProjectUserPermissions, ProjectMetric, PresentationObjectSummary, PresentationObjectDetail } from "lib";
+export type { ProjectMetric, PresentationObjectSummary, PresentationObjectDetail };
 import type { Slide, SlideDeckConfig, SlidePosition, SlideDeckSummary, SlideDeckDetail, SlideDeckFolder, SlideWithMeta, VisualizationFolder } from "platform-lib";
 export type { Slide, SlideDeckConfig, SlidePosition, SlideDeckSummary, SlideDeckDetail, SlideDeckFolder, SlideWithMeta, VisualizationFolder };
 
@@ -20,44 +21,6 @@ export type ImportProgressEvent =
   | { type: "inserting"; index: number; total: number }
   | { type: "done"; nResultsObjects: number; nRowsTotal: number }
   | { type: "error"; err: string };
-
-export type ProjectMetric = {
-  id: string;
-  moduleId: string;
-  label: string;
-  variantLabel: string | null;
-  valueFunc: string;
-  formatAs: string;
-  valueProps: string;
-  requiredDisaggregationOptions: string;
-  availableDisaggregationOptions: string;
-  valueLabelReplacements: string | null;
-  postAggregationExpression: string | null;
-  resultsObjectId: string;
-  hide: boolean;
-  lastRunAt: string;
-  vizPresets: string | null;
-};
-
-export type PresentationObjectSummary = {
-  id: string;
-  metricId: string;
-  label: string;
-  type: string;
-  folderId: string | null;
-  sortOrder: number;
-  lastUpdated: string;
-};
-
-export type PresentationObjectDetail = {
-  id: string;
-  metricId: string;
-  label: string;
-  config: unknown;
-  folderId: string | null;
-  sortOrder: number;
-  lastUpdated: string;
-};
 
 export const _SERVER_HOST =
   process.env.NODE_ENV === "production" ? "" : "http://localhost:8000";

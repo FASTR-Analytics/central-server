@@ -3,6 +3,10 @@ import type { GlobalUser, InstanceUser } from "lib";
 import { requireAdmin } from "../../middleware/auth.ts";
 import { getPgConnectionFromCacheOrNew } from "../../db/mod.ts";
 import type { DBUser } from "../../db/instance/_main_database_types.ts";
+import {
+  notifyInstanceProjectsLastUpdated,
+  notifyInstanceUsersLastUpdated,
+} from "../../task_management/notify_instance_updated.ts";
 
 type Env = { Variables: { globalUser: GlobalUser } };
 
@@ -31,6 +35,7 @@ routesUsers.post("/users", requireAdmin(), async (c) => {
     if (!trimmed) continue;
     await mainDb`INSERT INTO users (email) VALUES (${trimmed}) ON CONFLICT (email) DO NOTHING`;
   }
+  notifyInstanceUsersLastUpdated();
   return c.json({ success: true });
 });
 
@@ -38,6 +43,8 @@ routesUsers.delete("/users/:email", requireAdmin(), async (c) => {
   const email = c.req.param("email");
   const mainDb = getPgConnectionFromCacheOrNew("main", "READ_AND_WRITE");
   await mainDb`DELETE FROM users WHERE email = ${email}`;
+  notifyInstanceUsersLastUpdated();
+  notifyInstanceProjectsLastUpdated();
   return c.json({ success: true });
 });
 
@@ -46,6 +53,7 @@ routesUsers.put("/users/:email/admin", requireAdmin(), async (c) => {
   const { isAdmin } = await c.req.json<{ isAdmin: boolean }>();
   const mainDb = getPgConnectionFromCacheOrNew("main", "READ_AND_WRITE");
   await mainDb`UPDATE users SET is_admin = ${isAdmin} WHERE email = ${email}`;
+  notifyInstanceUsersLastUpdated();
   return c.json({ success: true });
 });
 
@@ -61,5 +69,6 @@ routesUsers.put("/users/:email/permissions", requireAdmin(), async (c) => {
     SET can_configure_users = ${canConfigureUsers}, can_create_projects = ${canCreateProjects}
     WHERE email = ${email}
   `;
+  notifyInstanceUsersLastUpdated();
   return c.json({ success: true });
 });
