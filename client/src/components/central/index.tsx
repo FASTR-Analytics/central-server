@@ -1,4 +1,4 @@
-import { ButtonGroup, FrameTop, StateHolderWrapper, timQuery } from "panther";
+import { ButtonGroup, FrameTop, StateHolderWrapper, UserCircleIcon, openComponent, timQuery } from "panther";
 import { Match, Show, Switch, createEffect, createSignal, on } from "solid-js";
 import type { GlobalUser, ProjectSummary } from "lib";
 import { serverActions } from "~/server_actions";
@@ -6,6 +6,7 @@ import { instanceState } from "~/state/instance/t1_store";
 import { ProjectsGrid } from "./ProjectsGrid";
 import { ProjectDetail } from "./ProjectDetail";
 import { InstanceUsers } from "./InstanceUsers";
+import { ProfileForm } from "./profile";
 
 type Tab = "projects" | "users";
 
@@ -42,6 +43,13 @@ export function CentralMain(p: Props) {
     setSelectedProjectId(null);
   }
 
+  async function openProfile() {
+    await openComponent({
+      element: ProfileForm,
+      props: { attemptSignOut: p.attemptSignOut },
+    });
+  }
+
   // When a project is selected, ProjectDetail takes over the full screen with its own FrameTop
   return (
     <Show
@@ -63,8 +71,13 @@ export function CentralMain(p: Props) {
                   />
                 </Show>
               </div>
-              <div class="flex flex-none items-center">
-                <span class="text-base-content/50 text-sm">{p.globalUser.email}</span>
+              <div
+                class="ui-hoverable ui-gap-sm ui-pad-sm flex items-center rounded"
+                onClick={openProfile}
+              >
+                <span class="text-primary inline-block w-5">
+                  <UserCircleIcon />
+                </span>
               </div>
             </div>
           }
