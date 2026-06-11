@@ -92,14 +92,29 @@ export async function doImport(
     for (const ro of resultsObjects) {
       const tableName = getResultsObjectTableName(ro.id);
 
+      const colDefs: Record<string, string> = ro.columnDefinitions ? JSON.parse(ro.columnDefinitions) : {};
+
+      // Mirror platform behaviour: keep only the most granular time column.
+      // period_id > quarter_id > year; drop the others so derived columns are
+      // always computed on-the-fly via the period CTE.
+      const hasPeriodId = "period_id" in colDefs;
+      const hasQuarterId = !hasPeriodId && "quarter_id" in colDefs;
+      const periodColsToDrop: string[] = hasPeriodId
+        ? ["year", "quarter_id", "month"]
+        : hasQuarterId
+        ? ["year", "month"]
+        : ["month", "quarter_id"];
+      for (const col of periodColsToDrop) {
+        delete colDefs[col];
+      }
+
       await projectDb`
         INSERT INTO results_objects (id, module_id, column_definitions)
-        VALUES (${ro.id}, ${ro.moduleId}, ${ro.columnDefinitions})
+        VALUES (${ro.id}, ${ro.moduleId}, ${JSON.stringify(colDefs)})
         ON CONFLICT (id) DO UPDATE SET
           column_definitions = EXCLUDED.column_definitions
       `;
 
-      const colDefs: Record<string, string> = ro.columnDefinitions ? JSON.parse(ro.columnDefinitions) : {};
       const columnsSql = Object.entries(colDefs).map(([name, typedef]) => `${name} ${typedef.replace(/\s+NOT NULL/gi, "")}`).join(", ");
       const createSql = columnsSql
         ? `CREATE TABLE IF NOT EXISTS ${tableName} (source_server_id TEXT NOT NULL, ${columnsSql})`
@@ -109,11 +124,20 @@ export async function doImport(
         await projectDb.unsafe(`ALTER TABLE ${tableName} ALTER COLUMN "${colName}" DROP NOT NULL`);
       }
 
+      // Drop redundant period columns from tables that existed before this logic
+      // was introduced (re-import case).
+      if (periodColsToDrop.length > 0) {
+        const dropClauses = periodColsToDrop.map((col) => `DROP COLUMN IF EXISTS "${col}"`).join(", ");
+        await projectDb.unsafe(`ALTER TABLE ${tableName} ${dropClauses}`);
+      }
+
       await projectDb.unsafe(`DELETE FROM ${tableName} WHERE source_server_id = $1`, [sourceInstanceId]);
 
       if (ro.rows.length > 0) {
-        const columns = ["source_server_id", ...Object.keys(ro.rows[0])];
-        const values = ro.rows.map((row: Record<string, unknown>) => [sourceInstanceId, ...Object.values(row)]);
+        const colDefsKeys = new Set(Object.keys(colDefs));
+        const rowKeys = Object.keys(ro.rows[0]).filter((k) => colDefsKeys.has(k));
+        const columns = ["source_server_id", ...rowKeys];
+        const values = ro.rows.map((row: Record<string, unknown>) => [sourceInstanceId, ...rowKeys.map((k) => row[k])]);
         const chunkSize = 500;
         for (let i = 0; i < values.length; i += chunkSize) {
           const chunk = values.slice(i, i + chunkSize);

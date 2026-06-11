@@ -17,7 +17,11 @@ function normalizeHex(input: string): string {
 }
 
 export function ColorThemePicker(p: ColorThemePickerProps) {
-  const corePresets = getColorPresets();
+  // "custom" is the synthetic brand-color preset, never a picker swatch
+  const corePresets = getColorPresets().filter(
+    (cp): cp is ColorPreset & { id: Exclude<ColorPreset["id"], "custom"> } =>
+      cp.id !== "custom",
+  );
   const [customHex, setCustomHex] = createSignal(p.value.type === "custom" ? p.value.primary : "");
   const [showCustomInput, setShowCustomInput] = createSignal(false);
 

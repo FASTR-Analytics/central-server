@@ -8,6 +8,7 @@ import {
   ResultsValue,
   getDisaggregationLabel,
   getNextAvailableDisaggregationDisplayOption,
+  getRollupLabelContext,
   get_DISAGGREGATION_DISPLAY_OPTIONS,
 } from "platform-lib";
 import { Checkbox, RadioGroup, Select } from "panther";
@@ -293,19 +294,37 @@ type AdminAreaOptionsProps = {
 };
 
 function AdminAreaOptions(p: AdminAreaOptionsProps) {
+  // The checkbox label mirrors what the roll-up row will actually contain —
+  // getRollupLabelContext is the same helper that labels the rendered row.
+  // Pinned names the LEVEL, not the pinned value, because with a replicant the
+  // value differs per replicant.
+  const rollupCheckboxLabel = () => {
+    const ctx = getRollupLabelContext(p.tempConfig);
+    if (ctx?.kind === "subset") {
+      return "Include results for all selected areas";
+    }
+    if (ctx?.kind === "pinned") {
+      const name = getDisplayDisaggregationLabel(ctx.level);
+      return `Include ${name} results`;
+    }
+    return "Include National results";
+  };
   return (
-    <div class="text-right">
+    <div class="flex flex-col items-end">
       <Checkbox
-        label="Include National results"
-        checked={!!p.tempConfig.d.includeNationalForAdminArea2}
-        onChange={(v) =>
-          p.setTempConfig("d", "includeNationalForAdminArea2", v)
-        }
+        label={rollupCheckboxLabel()}
+        checked={!!p.tempConfig.d.includeAdminAreaRollup}
+        onChange={(v) => {
+          p.setTempConfig("d", "includeAdminAreaRollup", v);
+          if (v && !p.tempConfig.d.adminAreaRollupPosition) {
+            p.setTempConfig("d", "adminAreaRollupPosition", "bottom");
+          }
+        }}
       />
-      <Show when={p.tempConfig.d.includeNationalForAdminArea2}>
+      <Show when={p.tempConfig.d.includeAdminAreaRollup}>
         <div class="flex justify-end pt-1.5 text-sm">
           <RadioGroup
-            value={p.tempConfig.d.includeNationalPosition}
+            value={p.tempConfig.d.adminAreaRollupPosition ?? "bottom"}
             options={[
               { value: "top", label: "Top" },
               { value: "bottom", label: "Bottom" },
@@ -314,7 +333,7 @@ function AdminAreaOptions(p: AdminAreaOptionsProps) {
             onChange={(v) =>
               p.setTempConfig(
                 "d",
-                "includeNationalPosition",
+                "adminAreaRollupPosition",
                 v as "bottom" | "top",
               )
             }

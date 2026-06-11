@@ -8,7 +8,7 @@ import type {
   SlidePosition,
   SlideWithMeta,
 } from "platform-lib";
-import type { DBSlide, DBSlideDeck, DBSlideDeckFolder } from "./_project_database_types.ts";
+import type { DBSlide, DBSlideDeck } from "./_project_database_types.ts";
 import { tryCatchDatabaseAsync } from "../utils.ts";
 import type { APIResponseWithData } from "../utils.ts";
 
@@ -480,66 +480,6 @@ export async function moveSlides(
     });
 
     return { success: true, data: { lastUpdated } };
-  });
-}
-
-// ─── Folders ─────────────────────────────────────────────────────────────────
-
-export async function getAllSlideDeckFolders(
-  projectDb: Sql,
-): Promise<APIResponseWithData<{ id: string; label: string; color: string | null; sortOrder: number }[]>> {
-  return await tryCatchDatabaseAsync(async () => {
-    const rows = await projectDb<DBSlideDeckFolder[]>`
-      SELECT * FROM slide_deck_folders ORDER BY sort_order
-    `;
-    return {
-      success: true,
-      data: rows.map((r) => ({
-        id: r.id,
-        label: r.label,
-        color: r.color,
-        sortOrder: r.sort_order,
-      })),
-    };
-  });
-}
-
-export async function createSlideDeckFolder(
-  projectDb: Sql,
-  label: string,
-): Promise<APIResponseWithData<{ folderId: string }>> {
-  return await tryCatchDatabaseAsync(async () => {
-    const folderId = nanoid();
-    const maxResult = (
-      await projectDb<{ max_sort: number | null }[]>`SELECT max(sort_order) as max_sort FROM slide_deck_folders`
-    ).at(0);
-    const sortOrder = (maxResult?.max_sort ?? 0) + 10;
-
-    await projectDb`
-      INSERT INTO slide_deck_folders (id, label, sort_order) VALUES (${folderId}, ${label}, ${sortOrder})
-    `;
-    return { success: true, data: { folderId } };
-  });
-}
-
-export async function updateSlideDeckFolder(
-  projectDb: Sql,
-  folderId: string,
-  label: string,
-): Promise<APIResponseWithData<Record<never, never>>> {
-  return await tryCatchDatabaseAsync(async () => {
-    await projectDb`UPDATE slide_deck_folders SET label = ${label} WHERE id = ${folderId}`;
-    return { success: true, data: {} };
-  });
-}
-
-export async function deleteSlideDeckFolder(
-  projectDb: Sql,
-  folderId: string,
-): Promise<APIResponseWithData<Record<never, never>>> {
-  return await tryCatchDatabaseAsync(async () => {
-    await projectDb`DELETE FROM slide_deck_folders WHERE id = ${folderId}`;
-    return { success: true, data: {} };
   });
 }
 

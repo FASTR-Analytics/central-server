@@ -20,10 +20,6 @@ import {
   deleteSlides,
   duplicateSlides,
   moveSlides,
-  getAllSlideDeckFolders,
-  createSlideDeckFolder,
-  updateSlideDeckFolder,
-  deleteSlideDeckFolder,
 } from "../../db/project/slide_decks.ts";
 
 type Env = { Variables: { globalUser: GlobalUser } };
@@ -50,7 +46,7 @@ routesSlideDeck.get("/projects/:projectId/slide_decks/:deckId", requireAuth(), a
 
 routesSlideDeck.post("/projects/:projectId/slide_decks", requireAuth(), async (c) => {
   const { projectId } = c.req.param();
-  const body = await c.req.json<{ label: string; folderId?: string }>();
+  const body = await c.req.json<{ label: string; folderId?: string | null }>();
   if (!body.label) return c.json({ success: false, err: "label required" }, 400);
   const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_AND_WRITE");
   const result = await createSlideDeck(projectDb, body.label, body.folderId);
@@ -97,7 +93,7 @@ routesSlideDeck.put("/projects/:projectId/slide_decks/:deckId/folder", requireAu
 
 routesSlideDeck.post("/projects/:projectId/slide_decks/:deckId/duplicate", requireAuth(), async (c) => {
   const { projectId, deckId } = c.req.param();
-  const body = await c.req.json<{ label: string; folderId?: string }>();
+  const body = await c.req.json<{ label: string; folderId?: string | null }>();
   if (!body.label) return c.json({ success: false, err: "label required" }, 400);
   const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_AND_WRITE");
   const result = await duplicateSlideDeck(projectDb, deckId, body.label, body.folderId);
@@ -176,40 +172,3 @@ routesSlideDeck.put("/projects/:projectId/slide_decks/:deckId/slides/move", requ
   return c.json(result);
 });
 
-// ─── Slide Deck Folders ───────────────────────────────────────────────────────
-
-routesSlideDeck.get("/projects/:projectId/slide_deck_folders", requireAuth(), async (c) => {
-  const { projectId } = c.req.param();
-  const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_ONLY");
-  const result = await getAllSlideDeckFolders(projectDb);
-  if (!result.success) return c.json(result, 500);
-  return c.json(result);
-});
-
-routesSlideDeck.post("/projects/:projectId/slide_deck_folders", requireAuth(), async (c) => {
-  const { projectId } = c.req.param();
-  const body = await c.req.json<{ label: string }>();
-  if (!body.label) return c.json({ success: false, err: "label required" }, 400);
-  const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_AND_WRITE");
-  const result = await createSlideDeckFolder(projectDb, body.label);
-  if (!result.success) return c.json(result, 500);
-  return c.json(result);
-});
-
-routesSlideDeck.put("/projects/:projectId/slide_deck_folders/:folderId", requireAuth(), async (c) => {
-  const { projectId, folderId } = c.req.param();
-  const body = await c.req.json<{ label: string }>();
-  if (!body.label) return c.json({ success: false, err: "label required" }, 400);
-  const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_AND_WRITE");
-  const result = await updateSlideDeckFolder(projectDb, folderId, body.label);
-  if (!result.success) return c.json(result, 500);
-  return c.json(result);
-});
-
-routesSlideDeck.delete("/projects/:projectId/slide_deck_folders/:folderId", requireAuth(), async (c) => {
-  const { projectId, folderId } = c.req.param();
-  const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_AND_WRITE");
-  const result = await deleteSlideDeckFolder(projectDb, folderId);
-  if (!result.success) return c.json(result, 500);
-  return c.json(result);
-});

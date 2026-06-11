@@ -160,10 +160,10 @@ routesPresentationObjects.delete("/projects/:projectId/presentation_objects/:id"
 // Duplicate presentation object
 routesPresentationObjects.post("/projects/:projectId/presentation_objects/:id/duplicate", requireAuth(), async (c) => {
   const { projectId, id } = c.req.param();
-  const body = await c.req.json<{ label: string }>();
+  const body = await c.req.json<{ label: string; folderId?: string | null }>();
   if (!body.label) return c.json({ success: false, err: "label required" }, 400);
   const projectDb = getPgConnectionFromCacheOrNew(projectId, "READ_AND_WRITE");
-  const result = await duplicatePresentationObject(projectDb, id, body.label);
+  const result = await duplicatePresentationObject(projectDb, id, body.label, body.folderId);
   if (!result.success) return c.json(result, 500);
   return c.json(result);
 });

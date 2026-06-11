@@ -160,6 +160,7 @@ export async function duplicatePresentationObject(
   projectDb: Sql,
   id: string,
   label: string,
+  folderId?: string | null,
 ): Promise<{ success: true; data: { id: string } } | { success: false; err: string }> {
   try {
     const source = (await projectDb<DBPresentationObject[]>`
@@ -169,11 +170,30 @@ export async function duplicatePresentationObject(
 
     const newId = nanoid();
     const lastUpdated = new Date().toISOString();
+    const newFolderId = folderId === undefined ? source.folder_id : folderId;
     await projectDb`
       INSERT INTO presentation_objects (id, metric_id, label, config, last_updated, folder_id, sort_order)
-      VALUES (${newId}, ${source.metric_id}, ${label}, ${source.config}, ${lastUpdated}, ${source.folder_id}, ${source.sort_order})
+      VALUES (${newId}, ${source.metric_id}, ${label}, ${source.config}, ${lastUpdated}, ${newFolderId}, ${source.sort_order})
     `;
     return { success: true, data: { id: newId } };
+  } catch (err) {
+    return { success: false, err: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export async function updatePresentationObjectFolder(
+  projectDb: Sql,
+  presentationObjectId: string,
+  folderId: string | null,
+): Promise<{ success: true; data: { lastUpdated: string } } | { success: false; err: string }> {
+  try {
+    const lastUpdated = new Date().toISOString();
+    await projectDb`
+      UPDATE presentation_objects
+      SET folder_id = ${folderId}, last_updated = ${lastUpdated}
+      WHERE id = ${presentationObjectId}
+    `;
+    return { success: true, data: { lastUpdated } };
   } catch (err) {
     return { success: false, err: err instanceof Error ? err.message : String(err) };
   }

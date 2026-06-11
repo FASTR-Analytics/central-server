@@ -47,8 +47,17 @@ CREATE INDEX IF NOT EXISTS idx_metrics_module_id ON metrics(module_id);
 CREATE TABLE IF NOT EXISTS visualization_folders (
   id text PRIMARY KEY NOT NULL,
   label text NOT NULL,
-  sort_order integer NOT NULL DEFAULT 0
+  color text,
+  description text,
+  sort_order integer NOT NULL DEFAULT 0,
+  last_updated text NOT NULL DEFAULT ''
 );
+
+ALTER TABLE visualization_folders ADD COLUMN IF NOT EXISTS color text;
+ALTER TABLE visualization_folders ADD COLUMN IF NOT EXISTS description text;
+ALTER TABLE visualization_folders ADD COLUMN IF NOT EXISTS last_updated text NOT NULL DEFAULT '';
+
+CREATE INDEX IF NOT EXISTS idx_visualization_folders_sort_order ON visualization_folders(sort_order);
 
 -- Presentation objects (visualizations)
 CREATE TABLE IF NOT EXISTS presentation_objects (
@@ -62,14 +71,23 @@ CREATE TABLE IF NOT EXISTS presentation_objects (
 );
 
 CREATE INDEX IF NOT EXISTS idx_presentation_objects_metric_id ON presentation_objects(metric_id);
+CREATE INDEX IF NOT EXISTS idx_presentation_objects_folder_id ON presentation_objects(folder_id);
+CREATE INDEX IF NOT EXISTS idx_presentation_objects_sort_order ON presentation_objects(sort_order);
 
 -- Slide deck folders
 CREATE TABLE IF NOT EXISTS slide_deck_folders (
   id text PRIMARY KEY NOT NULL,
   label text NOT NULL,
   color text,
-  sort_order integer NOT NULL DEFAULT 0
+  description text,
+  sort_order integer NOT NULL DEFAULT 0,
+  last_updated text NOT NULL DEFAULT ''
 );
+
+ALTER TABLE slide_deck_folders ADD COLUMN IF NOT EXISTS description text;
+ALTER TABLE slide_deck_folders ADD COLUMN IF NOT EXISTS last_updated text NOT NULL DEFAULT '';
+
+CREATE INDEX IF NOT EXISTS idx_slide_deck_folders_sort_order ON slide_deck_folders(sort_order);
 
 -- Slide decks
 CREATE TABLE IF NOT EXISTS slide_decks (
@@ -81,6 +99,7 @@ CREATE TABLE IF NOT EXISTS slide_decks (
   last_updated text NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_slide_decks_last_updated ON slide_decks(last_updated);
+CREATE INDEX IF NOT EXISTS idx_slide_decks_folder_id ON slide_decks(folder_id);
 
 -- Individual slides
 CREATE TABLE IF NOT EXISTS slides (
