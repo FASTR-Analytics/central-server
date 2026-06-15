@@ -124,13 +124,33 @@ async function runImportJob(jobId: string) {
     }
 
     const total = exportPayload.resultsObjects.length;
-    const prefetchedRows = new Map<string, Record<string, unknown>[]>();
     const ROWS_PAGE_SIZE = 20000;
 
+    // Set up schema/modules/metrics first. The row payload embedded in
+    // exportPayload is empty on this path (rows are streamed separately below),
+    // so this creates the tables and clears prior data for this source without
+    // materialising any rows in memory.
+    send({ type: "importing" });
+
+    const result = await doImport({ ...exportPayload, targetProjectId }, "system");
+    if (!result.success) {
+      const mainDb = getPgConnectionFromCacheOrNew("main", "READ_ONLY");
+      await refetchAndNotifyImportHistory(mainDb, targetProjectId);
+      send({ type: "error", err: result.err });
+      return;
+    }
+
+    const projectDb = getPgConnectionFromCacheOrNew(targetProjectId, "READ_AND_WRITE");
+
+    // Stream each results object one page at a time: fetch a page, insert it,
+    // then let it be garbage-collected before fetching the next. Accumulating
+    // every row of every results object in memory first is what blew past V8's
+    // heap limit and took the whole process down.
     for (let i = 0; i < total; i++) {
       const ro = exportPayload.resultsObjects[i];
-      const rows: Record<string, unknown>[] = [];
+      const tableName = getResultsObjectTableName(ro.id);
       let offset = 0;
+      let rowsFetched = 0;
       while (true) {
         const rowsRes = await fetch(
           `https://${sourceServerId}.fastr-analytics.org/export_central/${sourceProjectId}/rows?ro_id=${encodeURIComponent(ro.id)}&offset=${offset}`,
@@ -146,32 +166,13 @@ async function runImportJob(jobId: string) {
           send({ type: "error", err: `Rows endpoint error for ${ro.id}: ${JSON.stringify(rowsJson).slice(0, 200)}` });
           return;
         }
-        rows.push(...rowsJson.data.rows);
+        await insertRowsChunk(projectDb, tableName, rowsJson.data.rows, exportPayload.sourceInstanceId);
+        rowsFetched += rowsJson.data.rows.length;
+        send({ type: "fetching", roId: ro.id, index: i + 1, total, rowsFetched });
         if (!rowsJson.data.hasMore) break;
         offset += ROWS_PAGE_SIZE;
       }
-      prefetchedRows.set(ro.id, rows);
-      send({ type: "fetching", roId: ro.id, index: i + 1, total, rowsFetched: rows.length });
-    }
-
-    send({ type: "importing" });
-
-    const result = await doImport({ ...exportPayload, targetProjectId }, "system");
-    if (!result.success) {
-      const mainDb = getPgConnectionFromCacheOrNew("main", "READ_ONLY");
-      await refetchAndNotifyImportHistory(mainDb, targetProjectId);
-      send({ type: "error", err: result.err });
-      return;
-    }
-
-    const projectDb = getPgConnectionFromCacheOrNew(targetProjectId, "READ_AND_WRITE");
-    const insertTotal = exportPayload.resultsObjects.length;
-    for (let i = 0; i < insertTotal; i++) {
-      const ro = exportPayload.resultsObjects[i];
-      const tableName = getResultsObjectTableName(ro.id);
-      const rows = prefetchedRows.get(ro.id) ?? [];
-      await insertRowsChunk(projectDb, tableName, rows, exportPayload.sourceInstanceId);
-      send({ type: "inserting", index: i + 1, total: insertTotal });
+      send({ type: "inserting", index: i + 1, total });
     }
 
     const mainDb = getPgConnectionFromCacheOrNew("main", "READ_ONLY");
