@@ -1,4 +1,4 @@
-import { Button, Input, LockIcon, timActionForm } from "panther";
+import { Button, Input, LockIcon, createFormAction } from "panther";
 import { For, Show, createSignal } from "solid-js";
 import type { ProjectSummary } from "lib";
 import { serverActions } from "~/server_actions";
@@ -15,7 +15,7 @@ export function ProjectsList(p: Props) {
   const visibleProjects = () =>
     p.projects.filter((pr) => pr.status !== "pending_deletion");
 
-  const createAction = timActionForm(
+  const createAction = createFormAction(
     (label: string) => serverActions.createProject({ label }),
     (_data) => p.onProjectCreated(),
   );

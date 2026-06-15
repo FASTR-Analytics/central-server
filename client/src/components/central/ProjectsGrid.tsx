@@ -6,7 +6,7 @@ import {
   Input,
   LockIcon,
   openComponent,
-  timActionForm,
+  createFormAction,
 } from "panther";
 import { For, Show, createSignal } from "solid-js";
 import type { ProjectSummary } from "lib";
@@ -35,7 +35,7 @@ function formatTimeAgo(isoString: string): string {
 function _CreateProjectForm(p: AlertComponentProps<{}, { id: string }>) {
   const [label, setLabel] = createSignal("");
 
-  const save = timActionForm(
+  const save = createFormAction(
     async () => {
       const trimmed = label().trim();
       if (!trimmed) return { success: false as const, err: "Enter a project name" };

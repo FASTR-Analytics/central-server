@@ -29,7 +29,7 @@ import {
   getEditorWrapper,
   openAlert,
   showMenu,
-  timActionButton,
+  createButtonAction,
 } from "panther";
 import { Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import { createStore, produce, reconcile, unwrap, type SetStoreFunction } from "solid-js/store";
@@ -150,14 +150,14 @@ export function SlideEditor(p: Props) {
     return updateRes;
   }
 
-  const saveAndClose = timActionButton(
+  const saveAndClose = createButtonAction(
     () => saveFunc(),
     (_data) => {
       p.close(true);
     },
   );
 
-  const save = timActionButton(
+  const save = createButtonAction(
     () => saveFunc(),
     (_data) => {},
   );
@@ -227,7 +227,10 @@ export function SlideEditor(p: Props) {
       idGenerator,
       getBlockType: (block: ContentBlock) => block.type,
       isFigureWithSource: (_block: ContentBlock) => false,
-      isEmptyFigure: (block: ContentBlock) => block.type === "figure" && !block.figureInputs,
+      isEmptyFigure: (block: ContentBlock) =>
+        block.type === "figure" &&
+        !block.bundle &&
+        !(block as { figureInputs?: unknown }).figureInputs,
       onEditVisualization: async (_blockId: string) => {},
       onSelectVisualization: async (blockId: string) => {
         await handleSelectVisualization(blockId);

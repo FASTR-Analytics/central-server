@@ -35,6 +35,7 @@ import type {
 import { getBaseText, resolvePageStyle } from "panther";
 import { _SERVER_HOST } from "~/server_actions";
 import { getImgFromCacheOrFetch } from "~/state/images";
+import { buildFigureInputsFromBundle } from "~/generate_visualization/build_figure_inputs_from_bundle";
 import { getBackgroundDetail } from "./get_overlay_image";
 
 const MARKDOWN_TEXT_SIZE_SCALE = 1.6;
@@ -440,7 +441,20 @@ async function convertBlockToPageContentItem(
     return imageItem;
   }
 
-  const fi: FigureInputs | undefined = block.figureInputs;
+  // New figures store a self-contained bundle (rendered on demand). Slides saved
+  // before the bundle migration still carry inline figureInputs, so fall back to
+  // those — central persists slide config as opaque JSON, so legacy blocks are
+  // preserved and don't need a data migration.
+  let fi: FigureInputs | undefined;
+  if (block.bundle) {
+    try {
+      fi = buildFigureInputsFromBundle(block.bundle);
+    } catch {
+      fi = undefined;
+    }
+  } else {
+    fi = (block as { figureInputs?: FigureInputs }).figureInputs;
+  }
   if (
     !fi ||
     !(

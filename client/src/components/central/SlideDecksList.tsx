@@ -12,7 +12,7 @@ import {
   SelectionCircle,
   SelectList,
   showMenu,
-  timActionDelete,
+  createDeleteAction,
   getQueryStateFromApiResponse,
   type ListItem,
   type MenuItem,
@@ -242,7 +242,7 @@ function SlideDecksPanelDisplay(p: PanelProps) {
         ? t3({ en: `Are you sure you want to delete ${idsToDelete.length} slide decks?`, fr: `Êtes-vous sûr de vouloir supprimer ${idsToDelete.length} présentations ?` })
         : t3({ en: "Are you sure you want to delete this slide deck?", fr: "Êtes-vous sûr de vouloir supprimer cette présentation ?" });
 
-    const deleteAction = timActionDelete(
+    const deleteAction = createDeleteAction(
       confirmText,
       async () => {
         const promises = idsToDelete.map((id) =>
@@ -329,7 +329,7 @@ function SlideDecksPanelDisplay(p: PanelProps) {
         icon: "trash",
         intent: "danger",
         onClick: async () => {
-          const deleteAction = timActionDelete(
+          const deleteAction = createDeleteAction(
             t3({ en: "Are you sure you want to delete this folder? Slide decks will be moved to General.", fr: "Êtes-vous sûr de vouloir supprimer ce dossier ? Les présentations seront déplacées dans Général." }),
             () =>
               serverActions.deleteSlideDeckFolder({

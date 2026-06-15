@@ -1,5 +1,5 @@
 import { Clerk } from "@clerk/clerk-js";
-import { StateHolderWrapper, timQuery } from "panther";
+import { StateHolderWrapper, createQuery } from "panther";
 import { JSX, Show, createSignal, onMount } from "solid-js";
 import { serverActions } from "~/server_actions";
 import type { GlobalUser } from "lib";
@@ -20,7 +20,7 @@ export function LoggedInWrapper(p: Props) {
   const [clerkLoaded, setClerkLoaded] = createSignal(bypassAuth);
   const [clerkUser, setClerkUser] = createSignal(clerk.user);
 
-  const globalUserQuery = timQuery(
+  const globalUserQuery = createQuery(
     () => serverActions.getGlobalUser({}),
     "Loading...",
   );

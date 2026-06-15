@@ -6,8 +6,8 @@ import {
   ModalContainer,
   SettingsSection,
   StateHolderWrapper,
-  timActionButton,
-  timQuery,
+  createButtonAction,
+  createQuery,
   type AlertComponentProps,
 } from "panther";
 import { serverActions } from "~/server_actions";
@@ -21,7 +21,7 @@ export function ProfileForm(
     undefined
   >,
 ) {
-  const userDetails = timQuery(
+  const userDetails = createQuery(
     () => serverActions.getGlobalUser({}),
     t3({ en: "Loading your profile...", fr: "Chargement de votre profil..." }),
   );
@@ -50,7 +50,7 @@ export function ProfileForm(
 
           const [editingOrganisation, setEditingOrganisation] = createSignal(false);
 
-          const saveOrganisation = timActionButton(async () => {
+          const saveOrganisation = createButtonAction(async () => {
             await clerk.user?.update({
               unsafeMetadata: {
                 ...clerk.user.unsafeMetadata,

@@ -9,8 +9,8 @@ import {
   openAlert,
   openComponent,
   openConfirm,
-  timActionButton,
-  timQuery,
+  createButtonAction,
+  createQuery,
 } from "panther";
 import { Match, Show, Switch, createEffect, createMemo, createSignal, onMount } from "solid-js";
 import { createStore, unwrap } from "solid-js/store";
@@ -57,7 +57,7 @@ export function VisualizationEditorEdit(p: EditProps) {
     config: PresentationObjectConfig;
   };
 
-  const query = timQuery<CombinedData>(async () => {
+  const query = createQuery<CombinedData>(async () => {
     const poRes = await serverActions.getPresentationObject({ projectId: p.projectId, id: p.poId });
     if (!poRes.success) return poRes;
     const metric = projectState.metrics.find((m) => m.id === poRes.data.metricId);
@@ -261,7 +261,7 @@ function _EditorActive(p: ActiveProps) {
     folderId: null,
   };
 
-  const rvInfoQuery = timQuery(
+  const rvInfoQuery = createQuery(
     () =>
       serverActions.getResultsValueInfo({
         projectId: p.projectId,
@@ -271,7 +271,7 @@ function _EditorActive(p: ActiveProps) {
     "Loading metric info...",
   );
 
-  const itemsQuery = timQuery(
+  const itemsQuery = createQuery(
     () => {
       const m = p.metric;
       const cfg = unwrap(tempConfig);
@@ -322,7 +322,7 @@ function _EditorActive(p: ActiveProps) {
     "Loading chart data...",
   );
 
-  const replicantPickerQuery = timQuery(
+  const replicantPickerQuery = createQuery(
     () => {
       const replicantDis = unwrap(tempConfig).d.disaggregateBy.find((d) => d.disDisplayOpt === "replicant");
       if (!replicantDis) return Promise.resolve({ success: true as const, data: [] as { id: string; label: string }[] });
@@ -437,7 +437,7 @@ function _EditorActive(p: ActiveProps) {
     }
   };
 
-  const deleteAction = timActionButton(
+  const deleteAction = createButtonAction(
     async () => {
       if (!p.poId) return { success: false as const, err: "No ID" };
       const confirmed = await openConfirm({ text: "Delete this visualization?" });

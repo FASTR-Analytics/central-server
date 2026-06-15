@@ -8,7 +8,7 @@ import {
   FrameTop,
   HeaderBarCanGoBack,
   StateHolderFormError,
-  timActionForm,
+  createFormAction,
   type AlertComponentProps,
 } from "panther";
 
@@ -31,7 +31,7 @@ export function BatchUploadUsersForm(p: Props) {
     input.value = "";
   }
 
-  const handleBatchUpload = timActionForm(
+  const handleBatchUpload = createFormAction(
     async () => {
       const text = selectedFileText();
 

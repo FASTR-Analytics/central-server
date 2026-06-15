@@ -2,11 +2,17 @@ import {
   Button,
   type AlertComponentProps,
   FrameTop,
+  getLanguage,
   HeadingBar,
   openAlert,
 } from "panther";
-import type { FigureBlock, PeriodOption } from "platform-lib";
-import { getFetchConfigFromPresentationObjectConfig } from "platform-lib";
+import type {
+  FigureBlock,
+  FigureBundle,
+  ItemsHolderPresentationObject,
+  PeriodOption,
+} from "platform-lib";
+import { getCalendar, getFetchConfigFromPresentationObjectConfig } from "platform-lib";
 import { createSignal, For, Show } from "solid-js";
 import { parseCentralPresentationObjectConfig } from "~/disaggregation_helpers";
 import { serverActions, type PresentationObjectSummary } from "~/server_actions";
@@ -136,7 +142,40 @@ export function SelectVisualizationForSlide(p: Props) {
         return;
       }
 
-      p.close({ type: "figure", figureInputs: figureInputsRes.data });
+      // Store a self-contained FigureBundle (the post-refactor slide model)
+      // instead of inline figureInputs. itemsRes.data is an
+      // ItemsHolderPresentationObject (status "ok" verified above) and already
+      // carries items/indicatorMetadata/dateRange/provenance. The render above
+      // also doubles as validation that the figure builds before we save it.
+      const ih = itemsRes.data as ItemsHolderPresentationObject & {
+        status: "ok";
+      };
+      const bundle: FigureBundle = {
+        config,
+        items: ih.items,
+        resultsValue: {
+          formatAs: metric.formatAs as "percent" | "number",
+          valueProps: JSON.parse(metric.valueProps ?? "[]"),
+        },
+        indicatorMetadata: ih.indicatorMetadata,
+        dateRange: ih.dateRange,
+        // Stored as bundle metadata only — central renders via the global
+        // language/calendar, so this isn't read back. Normalize the render-mode
+        // CalendarType to the bundle's two-value enum.
+        localization: {
+          language: getLanguage(),
+          calendar: getCalendar() === "ethiopian" ? "ethiopian" : "gregorian",
+          countryIso3: "",
+        },
+        metricId: metric.id,
+        snapshotAt: new Date().toISOString(),
+        provenance: {
+          moduleLastRun: ih.moduleLastRun,
+          datasetsVersion: ih.datasetsVersion,
+        },
+      };
+
+      p.close({ type: "figure", bundle });
     } catch (e) {
       await openAlert({
         text: e instanceof Error ? e.message : "Failed to select visualization",

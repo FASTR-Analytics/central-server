@@ -6,7 +6,7 @@ import {
   ColorPicker,
   Input,
   RadioGroup,
-  timActionForm,
+  createFormAction,
   type AlertComponentProps,
 } from "panther";
 import { createSignal, Show } from "solid-js";
@@ -37,7 +37,7 @@ export function MoveToFolderModal(p: AlertComponentProps<Props, ReturnType>) {
     })),
   ];
 
-  const save = timActionForm(
+  const save = createFormAction(
     async (e: MouseEvent) => {
       e.preventDefault();
 

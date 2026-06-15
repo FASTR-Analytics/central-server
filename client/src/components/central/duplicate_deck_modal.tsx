@@ -6,7 +6,7 @@ import {
   ColorPicker,
   Input,
   Select,
-  timActionForm,
+  createFormAction,
   ProgressBar,
   getProgress,
   type AlertComponentProps,
@@ -50,7 +50,7 @@ export function DuplicateDeckModal(
     ...p.folders.map((f) => ({ value: f.id, label: f.label })),
   ];
 
-  const save = timActionForm(
+  const save = createFormAction(
     async (e: MouseEvent) => {
       e.preventDefault();
 

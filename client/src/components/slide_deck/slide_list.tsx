@@ -9,11 +9,11 @@ import {
   Button,
   FrameTop,
   HeadingBar,
-  Loading,
+  LoadingIndicator,
   type MenuItem,
   MenuTriggerWrapper,
   Slider,
-  timActionDelete,
+  createDeleteAction,
 } from "panther";
 import SortableVendor, {
   SortableJs,
@@ -180,7 +180,7 @@ export function SlideList(p: Props) {
         ? `Are you sure you want to delete ${slideIdsToDelete.length} slides?`
         : "Are you sure you want to delete this slide?";
 
-    const deleteAction = timActionDelete(
+    const deleteAction = createDeleteAction(
       confirmText,
       () =>
         serverActions.deleteSlides({
@@ -369,7 +369,7 @@ export function SlideList(p: Props) {
         }}
       >
         <Show when={p.isLoading}>
-          <Loading msg="Loading slides..." noPad />
+          <LoadingIndicator msg="Loading slides..." noPad />
         </Show>
         <Show when={!p.isLoading && sortableSlideItems().length === 0}>
           <div class="text-neutral w-full py-16 text-center">

@@ -4,7 +4,7 @@ import {
   ModalContainer,
   SettingsSection,
   StateHolderWrapper,
-  timQuery,
+  createQuery,
   type AlertComponentProps,
 } from "panther";
 import { serverActions } from "~/server_actions";
@@ -12,7 +12,7 @@ import { serverActions } from "~/server_actions";
 export function InstanceMetaForm(
   p: AlertComponentProps<{}, undefined>,
 ) {
-  const instanceMeta = timQuery(
+  const instanceMeta = createQuery(
     () => serverActions.getInstanceMeta({}),
     t3({ en: "Loading instance information...", fr: "Chargement des informations de l'instance..." }),
   );

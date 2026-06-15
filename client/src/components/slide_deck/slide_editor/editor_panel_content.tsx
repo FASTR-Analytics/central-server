@@ -365,7 +365,9 @@ export function SlideEditorPanelContent(p: Props) {
                     <Match when={getCurrentBlock()?.type === "figure"}>
                       {(() => {
                         const block = () => getCurrentBlock() as FigureBlock;
-                        const hasFigure = () => !!block().figureInputs;
+                        const hasFigure = () =>
+                          !!block().bundle ||
+                          !!(block() as { figureInputs?: unknown }).figureInputs;
                         return (
                           <div class="ui-gap-sm flex flex-col">
                             <Button onClick={() => p.onSelectVisualization()}>

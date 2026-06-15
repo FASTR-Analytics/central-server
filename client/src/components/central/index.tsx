@@ -1,4 +1,4 @@
-import { Button, ButtonGroup, FrameTop, StateHolderWrapper, UserCircleIcon, openComponent, timQuery } from "panther";
+import { Button, ButtonGroup, FrameTop, StateHolderWrapper, UserCircleIcon, openComponent, createQuery } from "panther";
 import { Match, Show, Switch, createEffect, createSignal, on } from "solid-js";
 import type { GlobalUser, ProjectSummary } from "lib";
 import { serverActions } from "~/server_actions";
@@ -27,7 +27,7 @@ export function CentralMain(p: Props) {
       : []),
   ];
 
-  const projectsQuery = timQuery(
+  const projectsQuery = createQuery(
     () => serverActions.getProjects({}),
     "Loading projects...",
   );

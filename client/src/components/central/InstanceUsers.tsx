@@ -15,10 +15,10 @@ import {
   type TableColumn,
   downloadCsv,
   openComponent,
-  timActionButton,
-  timActionDelete,
-  timActionForm,
-  timQuery,
+  createButtonAction,
+  createDeleteAction,
+  createFormAction,
+  createQuery,
 } from "panther";
 import { For, Match, Show, Switch, createEffect, createSignal, on } from "solid-js";
 import type {
@@ -41,12 +41,12 @@ type Props = {
 export function InstanceUsers(p: Props) {
   const [selectedUser, setSelectedUser] = createSignal<InstanceUser | undefined>(undefined);
 
-  const usersQuery = timQuery(
+  const usersQuery = createQuery(
     () => serverActions.getUsers({}),
     "Loading users...",
   );
 
-  const projectsQuery = timQuery(
+  const projectsQuery = createQuery(
     () => serverActions.getProjects({}),
     "Loading projects...",
   );
@@ -224,21 +224,21 @@ function _UserDetail(p: UserDetailProps) {
     canConfigureUsers() !== originalCanConfigureUsers() ||
     canCreateProjects() !== originalCanCreateProjects();
 
-  const makeAdmin = timActionButton(
+  const makeAdmin = createButtonAction(
     () => serverActions.toggleUserAdmin({ email: p.user.email, isAdmin: true }),
     () => {
       setIsAdmin(true);
     },
   );
 
-  const makeNonAdmin = timActionButton(
+  const makeNonAdmin = createButtonAction(
     () => serverActions.toggleUserAdmin({ email: p.user.email, isAdmin: false }),
     () => {
       setIsAdmin(false);
     },
   );
 
-  const savePermissions = timActionButton(
+  const savePermissions = createButtonAction(
     () =>
       serverActions.updateUserInstancePermissions({
         email: p.user.email,
@@ -259,7 +259,7 @@ function _UserDetail(p: UserDetailProps) {
   }
 
   async function deleteUser() {
-    const action = timActionDelete(
+    const action = createDeleteAction(
       { text: `Are you sure you want to remove ${p.user.email}?`, itemList: [p.user.email] },
       () => serverActions.deleteUser({ email: p.user.email }),
       () => {
@@ -400,7 +400,7 @@ function _AddUsersForm(p: AlertComponentProps<{}, undefined>) {
       .map((str) => str.trim())
       .filter(Boolean);
 
-  const save = timActionForm(
+  const save = createFormAction(
     async (e: MouseEvent) => {
       e.preventDefault();
       const emails = goodEmailList().map((str) => str.toLowerCase());
@@ -484,7 +484,7 @@ function _ProjectPermissionsModal(p: AlertComponentProps<ProjectPermissionsProps
     setPermissions({ ...current, [key]: !current[key] });
   };
 
-  const save = timActionButton(
+  const save = createButtonAction(
     async () => {
       const perms = permissions();
       if (!perms) return { success: false as const, err: "No permissions" };

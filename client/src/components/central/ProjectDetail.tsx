@@ -13,9 +13,9 @@ import {
   type SelectOption,
   openComponent,
   openConfirm,
-  timActionButton,
-  timActionForm,
-  timQuery,
+  createButtonAction,
+  createFormAction,
+  createQuery,
 } from "panther";
 import { _SERVER_HOST } from "~/server_actions";
 import type { ImportProgressEvent } from "~/server_actions";
@@ -73,7 +73,7 @@ export function ProjectDetail(p: Props) {
     setEditingDeckId(undefined);
   }
 
-  const lockAction = timActionButton(
+  const lockAction = createButtonAction(
     () =>
       serverActions.lockProject({
         id: p.projectId,
@@ -83,7 +83,7 @@ export function ProjectDetail(p: Props) {
     () => {},
   );
 
-  const deleteAction = timActionButton(
+  const deleteAction = createButtonAction(
     async () => {
       const confirmed = await openConfirm({ text: "Schedule this project for deletion?" });
       if (!confirmed) return { success: false as const, err: "Cancelled" };
@@ -394,7 +394,7 @@ function _ProjectUsersSection(p: ProjectUsersSectionProps) {
     },
   ]);
 
-  const addAction = timActionButton(
+  const addAction = createButtonAction(
     async () => {
       const email = addEmail().trim().toLowerCase();
       if (!email) return { success: false as const, err: "Enter an email" };
@@ -470,7 +470,7 @@ function _EditPermissionsModal(
     setPermissions((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const save = timActionForm(
+  const save = createFormAction(
     () =>
       serverActions.setProjectUserPermissions({
         projectId: p.projectId,
@@ -541,12 +541,12 @@ function _ImportPanel(p: ImportPanelProps) {
   const [selectedServerId, setSelectedServerId] = createSignal("");
   const [selectedProjectId, setSelectedProjectId] = createSignal("");
 
-  const serversQuery = timQuery(
+  const serversQuery = createQuery(
     () => serverActions.getServers({}),
     "Loading servers...",
   );
 
-  const centralProjectsQuery = timQuery(
+  const centralProjectsQuery = createQuery(
     async () => {
       const sId = selectedServerId();
       if (!sId) return { success: true as const, data: [] as CentralReportingProject[] };

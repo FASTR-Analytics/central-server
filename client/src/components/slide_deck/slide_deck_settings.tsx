@@ -9,8 +9,8 @@ import {
   HeadingBar,
   SettingsSection,
   TextArea,
-  timActionButton,
-  timActionDelete,
+  createButtonAction,
+  createDeleteAction,
 } from "panther";
 import { createSignal, Show } from "solid-js";
 import { createStore, unwrap } from "solid-js/store";
@@ -47,7 +47,7 @@ export function SlideDeckSettings(p: Props) {
   );
   const [editingName, setEditingName] = createSignal(false);
 
-  const save = timActionButton(
+  const save = createButtonAction(
     async () => {
       const newConfig = unwrap(tempConfig);
       if (newConfig.colorTheme.type === "custom") {
@@ -67,7 +67,7 @@ export function SlideDeckSettings(p: Props) {
   async function attemptDelete() {
     if (!p.deleteAction) return;
     const da = p.deleteAction;
-    const deleteAction = timActionDelete(
+    const deleteAction = createDeleteAction(
       {
         text: da.confirmText,
         itemList: [da.itemLabel],
