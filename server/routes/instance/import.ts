@@ -26,8 +26,18 @@ function buildBulkInsert(tableName: string, columns: string[], nRows: number): s
 // deno-lint-ignore no-explicit-any
 export async function insertRowsChunk(projectDb: any, tableName: string, rows: Record<string, unknown>[], sourceInstanceId: string): Promise<void> {
   if (rows.length === 0) return;
-  const columns = ["source_server_id", ...Object.keys(rows[0])];
-  const values = rows.map((row) => [sourceInstanceId, ...Object.values(row)]);
+  // The target table only carries the columns defined at import time — redundant
+  // period columns (year/quarter_id/month) are dropped in doImport. Source rows
+  // still include those columns, so filter to what the table actually has;
+  // otherwise the INSERT references non-existent columns and the import fails.
+  const tableCols = await projectDb.unsafe(
+    `SELECT column_name FROM information_schema.columns WHERE table_name = $1`,
+    [tableName.replace(/^public\./, "").replace(/"/g, "")],
+  ) as { column_name: string }[];
+  const allowed = new Set(tableCols.map((c) => c.column_name));
+  const rowKeys = Object.keys(rows[0]).filter((k) => k !== "source_server_id" && allowed.has(k));
+  const columns = ["source_server_id", ...rowKeys];
+  const values = rows.map((row) => [sourceInstanceId, ...rowKeys.map((k) => row[k])]);
   const chunkSize = 500;
   for (let i = 0; i < values.length; i += chunkSize) {
     const chunk = values.slice(i, i + chunkSize);
@@ -41,7 +51,12 @@ export async function insertRowsChunk(projectDb: any, tableName: string, rows: R
 export async function doImport(
   payload: CentralExportPayload & { targetProjectId: string },
   email: string,
+  options?: { recordHistory?: boolean },
 ): Promise<{ success: true; data: { nResultsObjects: number; nRowsTotal: number } } | { success: false; err: string; status?: number }> {
+  // Callers that stream rows themselves (the central pull path) record their own
+  // history after the rows actually land, so doImport must not write a premature
+  // success row here.
+  const recordHistory = options?.recordHistory ?? true;
   const { sourceInstanceId, sourceInstanceLabel, sourceProjectId, modules, resultsObjects, metrics, calculatedIndicators, targetProjectId } = payload;
 
   if (!targetProjectId) return { success: false, err: "targetProjectId required", status: 400 };
@@ -211,27 +226,31 @@ export async function doImport(
       }
     }
 
-    await mainDb`
-      INSERT INTO import_history (
-        source_server_id, source_server_label, source_project_id,
-        target_project_id, imported_by, n_results_objects, n_rows_total, status
-      ) VALUES (
-        ${sourceInstanceId}, ${sourceInstanceLabel}, ${sourceProjectId},
-        ${targetProjectId}, ${email}, ${nResultsObjects}, ${nRowsTotal}, 'success'
-      )
-    `;
+    if (recordHistory) {
+      await mainDb`
+        INSERT INTO import_history (
+          source_server_id, source_server_label, source_project_id,
+          target_project_id, imported_by, n_results_objects, n_rows_total, status
+        ) VALUES (
+          ${sourceInstanceId}, ${sourceInstanceLabel}, ${sourceProjectId},
+          ${targetProjectId}, ${email}, ${nResultsObjects}, ${nRowsTotal}, 'success'
+        )
+      `;
+    }
 
     return { success: true, data: { nResultsObjects, nRowsTotal } };
   } catch (error) {
-    await mainDb`
-      INSERT INTO import_history (
-        source_server_id, source_server_label, source_project_id,
-        target_project_id, imported_by, n_results_objects, n_rows_total, status
-      ) VALUES (
-        ${sourceInstanceId}, ${sourceInstanceLabel}, ${sourceProjectId},
-        ${targetProjectId}, ${email}, ${nResultsObjects}, ${nRowsTotal}, 'failed'
-      )
-    `.catch(() => {});
+    if (recordHistory) {
+      await mainDb`
+        INSERT INTO import_history (
+          source_server_id, source_server_label, source_project_id,
+          target_project_id, imported_by, n_results_objects, n_rows_total, status
+        ) VALUES (
+          ${sourceInstanceId}, ${sourceInstanceLabel}, ${sourceProjectId},
+          ${targetProjectId}, ${email}, ${nResultsObjects}, ${nRowsTotal}, 'failed'
+        )
+      `.catch(() => {});
+    }
     console.error("Import failed:", error);
     return { success: false, err: error instanceof Error ? error.message : "Import failed" };
   }

@@ -103,25 +103,33 @@ async function runImportJob(jobId: string) {
 
   const channel = new BroadcastChannel(`import:${jobId}`);
   const send = (event: ImportProgressEvent) => channel.postMessage(event);
+  const mainDb = getPgConnectionFromCacheOrNew("main", "READ_AND_WRITE");
+
+  const { authHeader, sourceServerId, sourceProjectId, targetProjectId } = job;
+  // Defaults used for the history row if we fail before the export payload is read.
+  let sourceInstanceId = sourceServerId;
+  let sourceInstanceLabel = sourceServerId;
+  let historySourceProjectId = sourceProjectId;
+  let nResultsObjects = 0;
+  let nRowsTotal = 0;
 
   try {
-    const { authHeader, sourceServerId, sourceProjectId, targetProjectId } = job;
-
     const exportResponse = await fetch(
       `https://${sourceServerId}.fastr-analytics.org/export_central/${sourceProjectId}`,
       { headers: { Authorization: authHeader } },
     );
     if (!exportResponse.ok) {
       const text = await exportResponse.text();
-      send({ type: "error", err: `Export failed (${exportResponse.status}): ${text.slice(0, 200)}` });
-      return;
+      throw new Error(`Export failed (${exportResponse.status}): ${text.slice(0, 200)}`);
     }
     const exportJson = await exportResponse.json();
     const exportPayload: CentralExportPayload = exportJson.data ?? exportJson;
     if (!exportPayload || !Array.isArray(exportPayload.modules)) {
-      send({ type: "error", err: `Unexpected export response from ${sourceServerId}: ${JSON.stringify(exportPayload).slice(0, 300)}` });
-      return;
+      throw new Error(`Unexpected export response from ${sourceServerId}: ${JSON.stringify(exportPayload).slice(0, 300)}`);
     }
+    sourceInstanceId = exportPayload.sourceInstanceId;
+    sourceInstanceLabel = exportPayload.sourceInstanceLabel;
+    historySourceProjectId = exportPayload.sourceProjectId;
 
     const total = exportPayload.resultsObjects.length;
     const ROWS_PAGE_SIZE = 20000;
@@ -129,16 +137,13 @@ async function runImportJob(jobId: string) {
     // Set up schema/modules/metrics first. The row payload embedded in
     // exportPayload is empty on this path (rows are streamed separately below),
     // so this creates the tables and clears prior data for this source without
-    // materialising any rows in memory.
+    // materialising any rows in memory. History is recorded here only after the
+    // rows actually land, so doImport must not write a premature success row.
     send({ type: "importing" });
 
-    const result = await doImport({ ...exportPayload, targetProjectId }, "system");
-    if (!result.success) {
-      const mainDb = getPgConnectionFromCacheOrNew("main", "READ_ONLY");
-      await refetchAndNotifyImportHistory(mainDb, targetProjectId);
-      send({ type: "error", err: result.err });
-      return;
-    }
+    const result = await doImport({ ...exportPayload, targetProjectId }, "system", { recordHistory: false });
+    if (!result.success) throw new Error(result.err);
+    nResultsObjects = result.data.nResultsObjects;
 
     const projectDb = getPgConnectionFromCacheOrNew(targetProjectId, "READ_AND_WRITE");
 
@@ -158,16 +163,15 @@ async function runImportJob(jobId: string) {
         );
         if (!rowsRes.ok) {
           const text = await rowsRes.text().catch(() => "");
-          send({ type: "error", err: `Failed to fetch rows for ${ro.id} (${rowsRes.status}): ${text.slice(0, 200)}` });
-          return;
+          throw new Error(`Failed to fetch rows for ${ro.id} (${rowsRes.status}): ${text.slice(0, 200)}`);
         }
         const rowsJson = await rowsRes.json() as { success: boolean; data?: { rows: Record<string, unknown>[]; hasMore: boolean } };
         if (!rowsJson.success || !rowsJson.data) {
-          send({ type: "error", err: `Rows endpoint error for ${ro.id}: ${JSON.stringify(rowsJson).slice(0, 200)}` });
-          return;
+          throw new Error(`Rows endpoint error for ${ro.id}: ${JSON.stringify(rowsJson).slice(0, 200)}`);
         }
-        await insertRowsChunk(projectDb, tableName, rowsJson.data.rows, exportPayload.sourceInstanceId);
+        await insertRowsChunk(projectDb, tableName, rowsJson.data.rows, sourceInstanceId);
         rowsFetched += rowsJson.data.rows.length;
+        nRowsTotal += rowsJson.data.rows.length;
         send({ type: "fetching", roId: ro.id, index: i + 1, total, rowsFetched });
         if (!rowsJson.data.hasMore) break;
         offset += ROWS_PAGE_SIZE;
@@ -175,13 +179,35 @@ async function runImportJob(jobId: string) {
       send({ type: "inserting", index: i + 1, total });
     }
 
-    const mainDb = getPgConnectionFromCacheOrNew("main", "READ_ONLY");
+    // Record success only now that every row has actually landed.
+    await mainDb`
+      INSERT INTO import_history (
+        source_server_id, source_server_label, source_project_id,
+        target_project_id, imported_by, n_results_objects, n_rows_total, status
+      ) VALUES (
+        ${sourceInstanceId}, ${sourceInstanceLabel}, ${historySourceProjectId},
+        ${targetProjectId}, 'system', ${nResultsObjects}, ${nRowsTotal}, 'success'
+      )
+    `;
+
     await refetchAndNotifyMetrics(projectDb, targetProjectId);
     await refetchAndNotifyImportHistory(mainDb, targetProjectId);
     notifyInstanceProjectsLastUpdated();
 
-    send({ type: "done", nResultsObjects: result.data.nResultsObjects, nRowsTotal: result.data.nRowsTotal });
+    send({ type: "done", nResultsObjects, nRowsTotal });
   } catch (err) {
+    // The import genuinely failed — record it as such so the history panel never
+    // shows a success the data doesn't back up.
+    await mainDb`
+      INSERT INTO import_history (
+        source_server_id, source_server_label, source_project_id,
+        target_project_id, imported_by, n_results_objects, n_rows_total, status
+      ) VALUES (
+        ${sourceInstanceId}, ${sourceInstanceLabel}, ${historySourceProjectId},
+        ${targetProjectId}, 'system', ${nResultsObjects}, ${nRowsTotal}, 'failed'
+      )
+    `.catch(() => {});
+    await refetchAndNotifyImportHistory(mainDb, targetProjectId).catch(() => {});
     send({ type: "error", err: err instanceof Error ? err.message : String(err) });
   } finally {
     // Yield to the event loop so the final message is delivered before closing
