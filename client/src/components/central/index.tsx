@@ -66,8 +66,11 @@ export function CentralMain(p: Props) {
         <FrameTop
           panelChildren={
             <div class="ui-pad ui-gap bg-base-100 text-base-content flex items-center border-b border-base-300">
-              <div class="flex-none border-r border-base-300 pr-4">
+              <div class="flex flex-none items-center border-r border-base-300 pr-4">
                 <span class="font-700 text-xl">FASTR Central Hub</span>
+                <div class="w-24 flex-none pl-4">
+                  <img src="/images/logo.png" class="h-4 w-24 object-contain" />
+                </div>
               </div>
               <div class="flex flex-1 justify-center">
                 <Show when={p.globalUser.approved}>

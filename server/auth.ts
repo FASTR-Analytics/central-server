@@ -23,12 +23,21 @@ export async function getGlobalUser(c: Context): Promise<GlobalUser | "NOT_AUTHE
   const email = auth.sessionClaims?.email as string | undefined;
   if (!email) return "NOT_AUTHENTICATED";
 
+  // Names come from the live Clerk session claims (matches the platform), so they
+  // display even for h_users and users whose DB name hasn't been synced yet.
+  const firstName = (auth.sessionClaims?.given_name as string | undefined)
+    ?? (auth.sessionClaims?.firstName as string | undefined);
+  const lastName = (auth.sessionClaims?.family_name as string | undefined)
+    ?? (auth.sessionClaims?.lastName as string | undefined);
+
   const isHUser = H_USERS.includes(email);
 
   // h_users bypass the DB check — they always have full access
   if (isHUser) {
     return {
       email,
+      firstName,
+      lastName,
       isHUser: true,
       isAdmin: true,
       approved: true,
@@ -45,6 +54,8 @@ export async function getGlobalUser(c: Context): Promise<GlobalUser | "NOT_AUTHE
   if (!user) {
     return {
       email,
+      firstName,
+      lastName,
       isHUser: false,
       isAdmin: false,
       approved: false,
@@ -54,10 +65,6 @@ export async function getGlobalUser(c: Context): Promise<GlobalUser | "NOT_AUTHE
   }
 
   // Fire-and-forget name sync from Clerk claims
-  const firstName = auth.sessionClaims?.given_name as string | undefined
-    ?? auth.sessionClaims?.firstName as string | undefined;
-  const lastName = auth.sessionClaims?.family_name as string | undefined
-    ?? auth.sessionClaims?.lastName as string | undefined;
   if ((firstName || lastName) && !user.first_name) {
     getPgConnectionFromCacheOrNew("main", "READ_AND_WRITE")`
       UPDATE users SET first_name = ${firstName ?? null}, last_name = ${lastName ?? null}
@@ -70,8 +77,8 @@ export async function getGlobalUser(c: Context): Promise<GlobalUser | "NOT_AUTHE
     isHUser: false,
     isAdmin: user.is_admin,
     approved: true,
-    firstName: user.first_name ?? undefined,
-    lastName: user.last_name ?? undefined,
+    firstName: firstName ?? user.first_name ?? undefined,
+    lastName: lastName ?? user.last_name ?? undefined,
     canConfigureUsers: user.is_admin || user.can_configure_users,
     canCreateProjects: user.is_admin || user.can_create_projects,
   };
