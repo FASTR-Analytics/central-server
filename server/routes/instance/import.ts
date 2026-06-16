@@ -244,9 +244,9 @@ export async function doImport(
             calculated_indicator_id, label, format_as, decimal_places,
             threshold_direction, threshold_green, threshold_yellow, group_label, sort_order
           ) VALUES (
-            ${ci.calculated_indicator_id}, ${ci.label}, ${ci.format_as}, ${ci.decimal_places},
-            ${ci.threshold_direction}, ${ci.threshold_green}, ${ci.threshold_yellow},
-            ${ci.group_label}, ${ci.sort_order}
+            ${ci.calculated_indicator_id}, ${ci.label ?? ""}, ${ci.format_as ?? "number"}, ${ci.decimal_places ?? 0},
+            ${ci.threshold_direction ?? "higher_is_better"}, ${ci.threshold_green ?? 0}, ${ci.threshold_yellow ?? 0},
+            ${ci.group_label ?? ""}, ${ci.sort_order ?? 0}
           )
           ON CONFLICT (calculated_indicator_id) DO UPDATE SET
             label = EXCLUDED.label,
