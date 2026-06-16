@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Sql } from "postgres";
 import type { GlobalUser, CentralExportPayload } from "lib";
 import { getPgConnectionFromCacheOrNew, getResultsObjectTableName, initProjectDb, type DBProject } from "../../db/mod.ts";
 import { requireHUser } from "../../middleware/auth.ts";
@@ -23,34 +24,62 @@ function buildBulkInsert(tableName: string, columns: string[], nRows: number): s
   return `INSERT INTO ${tableName} (${colList}) VALUES ${rows.join(", ")}`;
 }
 
-// deno-lint-ignore no-explicit-any
-export async function insertRowsChunk(projectDb: any, tableName: string, rows: Record<string, unknown>[], sourceInstanceId: string): Promise<void> {
-  if (rows.length === 0) return;
-  // The target table only carries the columns defined at import time — redundant
-  // period columns (year/quarter_id/month) are dropped in doImport. Source rows
-  // still include those columns, so filter to what the table actually has;
-  // otherwise the INSERT references non-existent columns and the import fails.
-  const tableCols = await projectDb.unsafe(
+// Encode one value for Postgres COPY ... FROM STDIN in the default TEXT format:
+// NULL is "\N", objects become JSON (for jsonb columns), everything else is
+// stringified; then the structural characters are backslash-escaped (backslash
+// first, so the others aren't double-escaped).
+export function encodeCopyValue(v: unknown): string {
+  if (v === null || v === undefined) return "\\N";
+  const s = typeof v === "object" ? JSON.stringify(v) : String(v);
+  return s
+    .replace(/\\/g, "\\\\")
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t");
+}
+
+// The target table only carries the columns defined at import time — redundant
+// period columns (year/quarter_id/month) are dropped in doImport. Source rows
+// still include those columns, so callers filter to what the table actually has.
+// Looking this up once per results object (rather than per batch) avoids a catalog
+// round-trip on every batch.
+export async function getTableColumns(projectDb: Sql, tableName: string): Promise<Set<string>> {
+  const rows = await projectDb.unsafe(
     `SELECT column_name FROM information_schema.columns WHERE table_name = $1`,
     [tableName.replace(/^public\./, "").replace(/"/g, "")],
   ) as { column_name: string }[];
-  const allowed = new Set(tableCols.map((c) => c.column_name));
-  const rowKeys = Object.keys(rows[0]).filter((k) => k !== "source_server_id" && allowed.has(k));
-  const columns = ["source_server_id", ...rowKeys];
-  const values = rows.map((row) => [sourceInstanceId, ...rowKeys.map((k) => row[k])]);
-  const chunkSize = 500;
-  // Wrap the chunk inserts in a single transaction so the whole call is atomic: a
-  // failure rolls back every chunk, which lets the caller retry the batch without
-  // risking duplicate rows from already-committed chunks.
-  // deno-lint-ignore no-explicit-any
-  await projectDb.begin(async (tx: any) => {
-    for (let i = 0; i < values.length; i += chunkSize) {
-      const chunk = values.slice(i, i + chunkSize);
-      await tx.unsafe(
-        buildBulkInsert(tableName, columns, chunk.length),
-        chunk.flat() as (string | number | boolean | null)[],
-      );
-    }
+  return new Set(rows.map((r) => r.column_name));
+}
+
+// Bulk-load a batch of rows via Postgres COPY — dramatically faster than multi-row
+// INSERT. `allowedColumns` are the table's data columns (excluding source_server_id)
+// and must already exist in the table; values absent from a row become NULL. A COPY
+// command is atomic, so a failed batch leaves no partial rows and is safe to retry.
+export async function copyInsert(
+  projectDb: Sql,
+  tableName: string,
+  allowedColumns: string[],
+  rows: Record<string, unknown>[],
+  sourceInstanceId: string,
+): Promise<void> {
+  if (rows.length === 0) return;
+  const cols = ["source_server_id", ...allowedColumns];
+  const writable = await projectDb`COPY ${projectDb(tableName)} (${projectDb(cols)}) FROM STDIN`.writable();
+
+  let payload = "";
+  for (const row of rows) {
+    payload += encodeCopyValue(sourceInstanceId);
+    for (const k of allowedColumns) payload += "\t" + encodeCopyValue(row[k]);
+    payload += "\n";
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    writable.on("error", reject);
+    writable.on("finish", () => resolve());
+    writable.write(payload, (err: Error | null | undefined) => {
+      if (err) reject(err);
+    });
+    writable.end();
   });
 }
 

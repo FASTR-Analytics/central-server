@@ -3,7 +3,7 @@ import { streamSSE } from "hono/streaming";
 import type { Sql } from "postgres";
 import type { GlobalUser, CentralExportPayload } from "lib";
 import { requireHUser } from "../../middleware/auth.ts";
-import { doImport, insertRowsChunk } from "./import.ts";
+import { copyInsert, doImport, getTableColumns } from "./import.ts";
 import { getPgConnectionFromCacheOrNew, getResultsObjectTableName } from "../../db/mod.ts";
 import { _BYPASS_AUTH, _CENTRAL_SERVER_SECRET, _SERVERS_FILE_PATH } from "../../exposed_env_vars.ts";
 import { notifyInstanceProjectsLastUpdated } from "../../task_management/notify_instance_updated.ts";
@@ -52,11 +52,62 @@ async function retry<T>(label: string, fn: () => Promise<T>, attempts = 3, baseD
   throw lastErr;
 }
 
-// Stream one results object's rows from the source (newline-delimited JSON) and
-// insert each batch as it arrives. Returns the number of rows inserted.
+// Parse an NDJSON row stream, yielding each {"rows":[...]} batch as it arrives.
+// A terminal {"done"} ends the stream cleanly; an {"error"} line or a stream that
+// closes without a terminal line throws (so the caller's retry kicks in). The reader
+// is owned by the caller, which cancels it in a finally — that also unblocks any
+// in-flight read here on an error path.
+async function* readBatches(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+): AsyncGenerator<Record<string, unknown>[]> {
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let terminated = false;
+  const parseLine = (line: string): Record<string, unknown>[] | null => {
+    const trimmed = line.trim();
+    if (!trimmed) return null;
+    const msg = JSON.parse(trimmed) as { rows?: Record<string, unknown>[]; done?: boolean; error?: string };
+    if (msg.error) throw new Error(`Source rows stream error: ${msg.error}`);
+    if (msg.done) {
+      terminated = true;
+      return null;
+    }
+    return msg.rows ?? null;
+  };
+
+  while (!terminated) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let nl: number;
+    while (!terminated && (nl = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, nl);
+      buffer = buffer.slice(nl + 1);
+      const rows = parseLine(line);
+      if (rows && rows.length > 0) yield rows;
+    }
+  }
+  // Defensive: a final line that wasn't newline-terminated.
+  if (!terminated && buffer.trim()) {
+    try {
+      const rows = parseLine(buffer);
+      if (rows && rows.length > 0) yield rows;
+    } catch {
+      // fall through to the truncated check below
+    }
+  }
+  if (!terminated) {
+    throw new Error("Source rows stream ended without a terminal message (truncated)");
+  }
+}
+
+// Stream one results object's rows from the source and COPY them in. Returns the
+// number of rows inserted.
 //
 // Idempotent by design: it first clears this source's rows from the table, so a
-// retry of the whole call re-imports from scratch instead of duplicating.
+// retry of the whole call re-imports from scratch instead of duplicating. A
+// one-batch look-ahead downloads the next batch while the current one is being
+// COPY-inserted, so network and DB time overlap instead of running strictly serially.
 async function streamRowsForResultsObject(
   projectDb: Sql,
   tableName: string,
@@ -72,57 +123,42 @@ async function streamRowsForResultsObject(
     throw new Error(`Failed to fetch rows (${res.status}): ${text.slice(0, 200)}`);
   }
 
+  // COPY targets the table's actual data columns (looked up once); a key missing
+  // from a row simply becomes NULL.
+  const tableCols = await getTableColumns(projectDb, tableName);
+  const allowedColumns = [...tableCols].filter((c) => c !== "source_server_id");
+
   const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
+  const gen = readBatches(reader);
   let nRows = 0;
-  let terminated = false;
-
-  const handleLine = async (line: string) => {
-    const trimmed = line.trim();
-    if (!trimmed) return;
-    const msg = JSON.parse(trimmed) as { rows?: Record<string, unknown>[]; done?: boolean; error?: string };
-    if (msg.error) throw new Error(`Source rows stream error: ${msg.error}`);
-    if (msg.done) {
-      terminated = true;
-      return;
-    }
-    if (msg.rows && msg.rows.length > 0) {
-      // Each insertRowsChunk call is atomic, so a transient failure can be retried
-      // without duplicating rows from a half-applied batch.
-      await retry(`insert batch into ${tableName}`, () => insertRowsChunk(projectDb, tableName, msg.rows!, sourceInstanceId), 3, 500);
-      nRows += msg.rows.length;
-      onProgress(nRows);
-    }
-  };
-
+  let readMs = 0;
+  let insertMs = 0;
+  let pending = gen.next();
+  pending.catch(() => {}); // mark handled so an error path can't raise an unhandled rejection
   try {
-    while (!terminated) {
-      const { value, done } = await reader.read();
+    while (true) {
+      const t0 = performance.now();
+      const { value, done } = await pending;
+      readMs += performance.now() - t0;
       if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let nl: number;
-      while (!terminated && (nl = buffer.indexOf("\n")) >= 0) {
-        const line = buffer.slice(0, nl);
-        buffer = buffer.slice(nl + 1);
-        await handleLine(line);
-      }
-    }
-    // Defensive: handle a final line that wasn't newline-terminated.
-    if (!terminated && buffer.trim()) {
-      try {
-        await handleLine(buffer);
-      } catch {
-        // fall through to the truncated-stream error below
-      }
+      pending = gen.next(); // start downloading the next batch while we insert this one
+      pending.catch(() => {});
+      const t1 = performance.now();
+      await retry(
+        `COPY batch into ${tableName}`,
+        () => copyInsert(projectDb, tableName, allowedColumns, value, sourceInstanceId),
+        3,
+        500,
+      );
+      insertMs += performance.now() - t1;
+      nRows += value.length;
+      onProgress(nRows);
     }
   } finally {
     await reader.cancel().catch(() => {});
   }
 
-  if (!terminated) {
-    throw new Error("Source rows stream ended without a terminal message (truncated)");
-  }
+  console.log(`[import] ${tableName}: ${nRows} rows | read(waited) ${Math.round(readMs)}ms | copy ${Math.round(insertMs)}ms`);
   return nRows;
 }
 
