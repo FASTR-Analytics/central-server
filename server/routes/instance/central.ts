@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
+import type { Sql } from "postgres";
 import type { GlobalUser, CentralExportPayload } from "lib";
 import { requireHUser } from "../../middleware/auth.ts";
 import { doImport, insertRowsChunk } from "./import.ts";
@@ -12,6 +13,10 @@ import {
 } from "../../task_management/refetch_and_notify.ts";
 
 type Env = { Variables: { globalUser: GlobalUser } };
+
+// Heartbeat interval for SSE streams. Proxies/CDNs idle-kill streamed responses
+// (Cloudflare at ~100s); a periodic comment keeps them open between real events.
+const SSE_KEEPALIVE_MS = 25_000;
 
 type ImportProgressEvent =
   | { type: "fetching"; roId: string; index: number; total: number; rowsFetched: number }
@@ -26,6 +31,100 @@ const pendingImports = new Map<string, {
   sourceProjectId: string;
   targetProjectId: string;
 }>();
+
+// Retry a transient operation with exponential backoff. Used for the per-results-
+// object row streaming (network/source blips) and per-batch inserts (DB blips) so a
+// single hiccup over a long import doesn't fail the whole job.
+async function retry<T>(label: string, fn: () => Promise<T>, attempts = 3, baseDelayMs = 1000): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (attempt < attempts) {
+        const delay = baseDelayMs * 2 ** (attempt - 1);
+        console.warn(`${label} failed (attempt ${attempt}/${attempts}), retrying in ${delay}ms:`, err);
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+  }
+  throw lastErr;
+}
+
+// Stream one results object's rows from the source (newline-delimited JSON) and
+// insert each batch as it arrives. Returns the number of rows inserted.
+//
+// Idempotent by design: it first clears this source's rows from the table, so a
+// retry of the whole call re-imports from scratch instead of duplicating.
+async function streamRowsForResultsObject(
+  projectDb: Sql,
+  tableName: string,
+  url: string,
+  sourceInstanceId: string,
+  onProgress: (rowsInserted: number) => void,
+): Promise<number> {
+  await projectDb.unsafe(`DELETE FROM ${tableName} WHERE source_server_id = $1`, [sourceInstanceId]);
+
+  const res = await fetch(url, { headers: { "X-Central-Secret": _CENTRAL_SERVER_SECRET } });
+  if (!res.ok || !res.body) {
+    const text = res.ok ? "empty body" : await res.text().catch(() => "");
+    throw new Error(`Failed to fetch rows (${res.status}): ${text.slice(0, 200)}`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let nRows = 0;
+  let terminated = false;
+
+  const handleLine = async (line: string) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    const msg = JSON.parse(trimmed) as { rows?: Record<string, unknown>[]; done?: boolean; error?: string };
+    if (msg.error) throw new Error(`Source rows stream error: ${msg.error}`);
+    if (msg.done) {
+      terminated = true;
+      return;
+    }
+    if (msg.rows && msg.rows.length > 0) {
+      // Each insertRowsChunk call is atomic, so a transient failure can be retried
+      // without duplicating rows from a half-applied batch.
+      await retry(`insert batch into ${tableName}`, () => insertRowsChunk(projectDb, tableName, msg.rows!, sourceInstanceId), 3, 500);
+      nRows += msg.rows.length;
+      onProgress(nRows);
+    }
+  };
+
+  try {
+    while (!terminated) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let nl: number;
+      while (!terminated && (nl = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, nl);
+        buffer = buffer.slice(nl + 1);
+        await handleLine(line);
+      }
+    }
+    // Defensive: handle a final line that wasn't newline-terminated.
+    if (!terminated && buffer.trim()) {
+      try {
+        await handleLine(buffer);
+      } catch {
+        // fall through to the truncated-stream error below
+      }
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+
+  if (!terminated) {
+    throw new Error("Source rows stream ended without a terminal message (truncated)");
+  }
+  return nRows;
+}
 
 export const routesCentral = new Hono<Env>();
 
@@ -87,8 +186,19 @@ routesCentral.get("/import_progress/:jobId", requireHUser(), async (c) => {
           await stream.writeSSE({ data: JSON.stringify(event) });
           if (event.type === "done" || event.type === "error") return;
         }
-        await new Promise<void>((r) => { resolve = r; });
+        // Wait for the next event or a keepalive tick, whichever comes first. The
+        // comment line keeps the connection alive through proxies that idle-kill
+        // streamed responses (~100s); EventSource ignores lines starting with ":".
+        let timer: number | undefined;
+        const woke = await new Promise<"msg" | "ping">((r) => {
+          resolve = () => r("msg");
+          timer = setTimeout(() => r("ping"), SSE_KEEPALIVE_MS);
+        });
         resolve = null;
+        if (timer !== undefined) clearTimeout(timer);
+        if (woke === "ping" && queue.length === 0) {
+          await stream.write(": ping\n\n");
+        }
       }
     } finally {
       channel.close();
@@ -132,7 +242,6 @@ async function runImportJob(jobId: string) {
     historySourceProjectId = exportPayload.sourceProjectId;
 
     const total = exportPayload.resultsObjects.length;
-    const ROWS_PAGE_SIZE = 20000;
 
     // Set up schema/modules/metrics first. The row payload embedded in
     // exportPayload is empty on this path (rows are streamed separately below),
@@ -147,35 +256,22 @@ async function runImportJob(jobId: string) {
 
     const projectDb = getPgConnectionFromCacheOrNew(targetProjectId, "READ_AND_WRITE");
 
-    // Stream each results object one page at a time: fetch a page, insert it,
-    // then let it be garbage-collected before fetching the next. Accumulating
-    // every row of every results object in memory first is what blew past V8's
-    // heap limit and took the whole process down.
+    // Stream each results object: one streaming request that yields NDJSON row
+    // batches, inserted as they arrive (memory stays bounded to one batch). Each
+    // results object is retried independently and re-clears its rows on every
+    // attempt, so a transient blip over a long import can't fail the whole job or
+    // duplicate data.
     for (let i = 0; i < total; i++) {
       const ro = exportPayload.resultsObjects[i];
       const tableName = getResultsObjectTableName(ro.id);
-      let offset = 0;
-      let rowsFetched = 0;
-      while (true) {
-        const rowsRes = await fetch(
-          `https://${sourceServerId}.fastr-analytics.org/export_central/${sourceProjectId}/rows?ro_id=${encodeURIComponent(ro.id)}&offset=${offset}`,
-          { headers: { "X-Central-Secret": _CENTRAL_SERVER_SECRET } },
-        );
-        if (!rowsRes.ok) {
-          const text = await rowsRes.text().catch(() => "");
-          throw new Error(`Failed to fetch rows for ${ro.id} (${rowsRes.status}): ${text.slice(0, 200)}`);
-        }
-        const rowsJson = await rowsRes.json() as { success: boolean; data?: { rows: Record<string, unknown>[]; hasMore: boolean } };
-        if (!rowsJson.success || !rowsJson.data) {
-          throw new Error(`Rows endpoint error for ${ro.id}: ${JSON.stringify(rowsJson).slice(0, 200)}`);
-        }
-        await insertRowsChunk(projectDb, tableName, rowsJson.data.rows, sourceInstanceId);
-        rowsFetched += rowsJson.data.rows.length;
-        nRowsTotal += rowsJson.data.rows.length;
-        send({ type: "fetching", roId: ro.id, index: i + 1, total, rowsFetched });
-        if (!rowsJson.data.hasMore) break;
-        offset += ROWS_PAGE_SIZE;
-      }
+      const url = `https://${sourceServerId}.fastr-analytics.org/export_central/${sourceProjectId}/rows?ro_id=${encodeURIComponent(ro.id)}`;
+      const roRows = await retry(
+        `fetch rows for ${ro.id}`,
+        () => streamRowsForResultsObject(projectDb, tableName, url, sourceInstanceId, (rowsFetched) => {
+          send({ type: "fetching", roId: ro.id, index: i + 1, total, rowsFetched });
+        }),
+      );
+      nRowsTotal += roRows;
       send({ type: "inserting", index: i + 1, total });
     }
 

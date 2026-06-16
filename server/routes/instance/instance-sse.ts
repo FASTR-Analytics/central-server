@@ -6,6 +6,10 @@ import { INSTANCE_UPDATES_CHANNEL } from "../../task_management/notify_instance_
 
 type Env = { Variables: { globalUser: GlobalUser } };
 
+// Heartbeat interval for SSE streams; keeps connections alive through proxies that
+// idle-kill streamed responses (Cloudflare at ~100s).
+const SSE_KEEPALIVE_MS = 25_000;
+
 export const routesInstanceSSE = new Hono<Env>();
 
 /**
@@ -53,10 +57,19 @@ routesInstanceSSE.get("/instance_updates", requireAuth(), (c) => {
           const queued = messageQueue.shift()!;
           await stream.writeSSE({ data: JSON.stringify(queued) });
         }
-        await new Promise<void>((resolve) => {
-          notifyNewMessage = resolve;
+        // Wait for the next message or a keepalive tick. The comment line keeps the
+        // connection alive through proxies that idle-kill streamed responses
+        // (~100s); EventSource ignores lines starting with ":".
+        let timer: number | undefined;
+        const woke = await new Promise<"msg" | "ping">((resolve) => {
+          notifyNewMessage = () => resolve("msg");
+          timer = setTimeout(() => resolve("ping"), SSE_KEEPALIVE_MS);
         });
         notifyNewMessage = null;
+        if (timer !== undefined) clearTimeout(timer);
+        if (woke === "ping" && messageQueue.length === 0) {
+          await stream.write(": ping\n\n");
+        }
       }
     } finally {
       broadcastReceiver.removeEventListener("message", messageHandler);

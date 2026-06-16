@@ -8,6 +8,10 @@ import { PROJECT_UPDATES_CHANNEL } from "../../task_management/notify_project_v2
 
 type Env = { Variables: { globalUser: GlobalUser } };
 
+// Heartbeat interval for SSE streams; keeps connections alive through proxies that
+// idle-kill streamed responses (Cloudflare at ~100s).
+const SSE_KEEPALIVE_MS = 25_000;
+
 export const routesProjectSSEV2 = new Hono<Env>();
 
 type QueuedMessage = ProjectSseMessage & { projectId: string };
@@ -74,10 +78,19 @@ routesProjectSSEV2.get("/project_sse_v2/:projectId", requireAuth(), (c) => {
           const { projectId: _pid, ...message } = queued;
           await stream.writeSSE({ data: JSON.stringify(message) });
         }
-        await new Promise<void>((resolve) => {
-          notifyNewMessage = resolve;
+        // Wait for the next message or a keepalive tick. The comment line keeps the
+        // connection alive through proxies that idle-kill streamed responses
+        // (~100s); EventSource ignores lines starting with ":".
+        let timer: number | undefined;
+        const woke = await new Promise<"msg" | "ping">((resolve) => {
+          notifyNewMessage = () => resolve("msg");
+          timer = setTimeout(() => resolve("ping"), SSE_KEEPALIVE_MS);
         });
         notifyNewMessage = null;
+        if (timer !== undefined) clearTimeout(timer);
+        if (woke === "ping" && messageQueue.length === 0) {
+          await stream.write(": ping\n\n");
+        }
       }
     } finally {
       broadcastReceiver.removeEventListener("message", messageHandler);

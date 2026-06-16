@@ -39,13 +39,19 @@ export async function insertRowsChunk(projectDb: any, tableName: string, rows: R
   const columns = ["source_server_id", ...rowKeys];
   const values = rows.map((row) => [sourceInstanceId, ...rowKeys.map((k) => row[k])]);
   const chunkSize = 500;
-  for (let i = 0; i < values.length; i += chunkSize) {
-    const chunk = values.slice(i, i + chunkSize);
-    await projectDb.unsafe(
-      buildBulkInsert(tableName, columns, chunk.length),
-      chunk.flat() as (string | number | boolean | null)[],
-    );
-  }
+  // Wrap the chunk inserts in a single transaction so the whole call is atomic: a
+  // failure rolls back every chunk, which lets the caller retry the batch without
+  // risking duplicate rows from already-committed chunks.
+  // deno-lint-ignore no-explicit-any
+  await projectDb.begin(async (tx: any) => {
+    for (let i = 0; i < values.length; i += chunkSize) {
+      const chunk = values.slice(i, i + chunkSize);
+      await tx.unsafe(
+        buildBulkInsert(tableName, columns, chunk.length),
+        chunk.flat() as (string | number | boolean | null)[],
+      );
+    }
+  });
 }
 
 export async function doImport(

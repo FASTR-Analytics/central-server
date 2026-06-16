@@ -608,8 +608,11 @@ function _ImportPanel(p: ImportPanelProps) {
     };
 
     evtSource.onerror = () => {
-      evtSource.close();
-      if (importPhase() !== "idle") {
+      // A transient drop (proxy idle-kill, server blip) is expected on a long
+      // import. EventSource auto-reconnects, and the still-running job keeps posting
+      // to the same channel, so the bar resumes on its own — don't close or error
+      // out. Only surface an error if the browser has given up entirely.
+      if (evtSource.readyState === EventSource.CLOSED && importPhase() !== "idle") {
         setImportError("Connection closed unexpectedly");
         setImportPhase("error");
       }
