@@ -55,24 +55,33 @@ export async function getTableColumns(projectDb: Sql, tableName: string): Promis
 // INSERT. `allowedColumns` are the table's data columns (excluding source_server_id)
 // and must already exist in the table; values absent from a row become NULL. A COPY
 // command is atomic, so a failed batch leaves no partial rows and is safe to retry.
+// Returns a per-batch timing breakdown (open = COPY handshake round-trip, build =
+// encodeCopyValue payload construction, write = stream the payload + COPY completion) so
+// callers can see which third dominates. Diagnostic for the central-side import bottleneck.
 export async function copyInsert(
   projectDb: Sql,
   tableName: string,
   allowedColumns: string[],
   rows: Record<string, unknown>[],
   sourceInstanceId: string,
-): Promise<void> {
-  if (rows.length === 0) return;
+): Promise<{ openMs: number; buildMs: number; writeMs: number }> {
+  if (rows.length === 0) return { openMs: 0, buildMs: 0, writeMs: 0 };
   const cols = ["source_server_id", ...allowedColumns];
-  const writable = await projectDb`COPY ${projectDb(tableName)} (${projectDb(cols)}) FROM STDIN`.writable();
 
+  const tOpen = performance.now();
+  const writable = await projectDb`COPY ${projectDb(tableName)} (${projectDb(cols)}) FROM STDIN`.writable();
+  const openMs = performance.now() - tOpen;
+
+  const tBuild = performance.now();
   let payload = "";
   for (const row of rows) {
     payload += encodeCopyValue(sourceInstanceId);
     for (const k of allowedColumns) payload += "\t" + encodeCopyValue(row[k]);
     payload += "\n";
   }
+  const buildMs = performance.now() - tBuild;
 
+  const tWrite = performance.now();
   await new Promise<void>((resolve, reject) => {
     writable.on("error", reject);
     writable.on("finish", () => resolve());
@@ -81,6 +90,9 @@ export async function copyInsert(
     });
     writable.end();
   });
+  const writeMs = performance.now() - tWrite;
+
+  return { openMs, buildMs, writeMs };
 }
 
 export async function doImport(

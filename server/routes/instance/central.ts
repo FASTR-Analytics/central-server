@@ -117,7 +117,10 @@ async function streamRowsForResultsObject(
 ): Promise<number> {
   await projectDb.unsafe(`DELETE FROM ${tableName} WHERE source_server_id = $1`, [sourceInstanceId]);
 
-  const res = await fetch(url, { headers: { "X-Central-Secret": _CENTRAL_SERVER_SECRET } });
+  // Accept-Encoding: identity → the source skips gzip and we skip gunzip, isolating whether
+  // decompression is part of the central-side bottleneck. Sources are co-located, so raw
+  // NDJSON over the internal hop is cheap. (Diagnostic; revisit once the bottleneck is known.)
+  const res = await fetch(url, { headers: { "X-Central-Secret": _CENTRAL_SERVER_SECRET, "Accept-Encoding": "identity" } });
   if (!res.ok || !res.body) {
     const text = res.ok ? "empty body" : await res.text().catch(() => "");
     throw new Error(`Failed to fetch rows (${res.status}): ${text.slice(0, 200)}`);
@@ -133,6 +136,9 @@ async function streamRowsForResultsObject(
   let nRows = 0;
   let readMs = 0;
   let insertMs = 0;
+  let openMs = 0;
+  let buildMs = 0;
+  let writeMs = 0;
   let pending = gen.next();
   pending.catch(() => {}); // mark handled so an error path can't raise an unhandled rejection
   try {
@@ -144,13 +150,16 @@ async function streamRowsForResultsObject(
       pending = gen.next(); // start downloading the next batch while we insert this one
       pending.catch(() => {});
       const t1 = performance.now();
-      await retry(
+      const timing = await retry(
         `COPY batch into ${tableName}`,
         () => copyInsert(projectDb, tableName, allowedColumns, value, sourceInstanceId),
         3,
         500,
       );
       insertMs += performance.now() - t1;
+      openMs += timing.openMs;
+      buildMs += timing.buildMs;
+      writeMs += timing.writeMs;
       nRows += value.length;
       onProgress(nRows);
     }
@@ -158,7 +167,7 @@ async function streamRowsForResultsObject(
     await reader.cancel().catch(() => {});
   }
 
-  console.log(`[import] ${tableName}: ${nRows} rows | read(waited) ${Math.round(readMs)}ms | copy ${Math.round(insertMs)}ms`);
+  console.log(`[import] ${tableName}: ${nRows} rows | read(waited) ${Math.round(readMs)}ms | copy ${Math.round(insertMs)}ms (open ${Math.round(openMs)} build ${Math.round(buildMs)} write ${Math.round(writeMs)})`);
   return nRows;
 }
 
