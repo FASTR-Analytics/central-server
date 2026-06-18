@@ -24,20 +24,6 @@ function buildBulkInsert(tableName: string, columns: string[], nRows: number): s
   return `INSERT INTO ${tableName} (${colList}) VALUES ${rows.join(", ")}`;
 }
 
-// Encode one value for Postgres COPY ... FROM STDIN in the default TEXT format:
-// NULL is "\N", objects become JSON (for jsonb columns), everything else is
-// stringified; then the structural characters are backslash-escaped (backslash
-// first, so the others aren't double-escaped).
-export function encodeCopyValue(v: unknown): string {
-  if (v === null || v === undefined) return "\\N";
-  const s = typeof v === "object" ? JSON.stringify(v) : String(v);
-  return s
-    .replace(/\\/g, "\\\\")
-    .replace(/\n/g, "\\n")
-    .replace(/\r/g, "\\r")
-    .replace(/\t/g, "\\t");
-}
-
 // The target table only carries the columns defined at import time — redundant
 // period columns (year/quarter_id/month) are dropped in doImport. Source rows
 // still include those columns, so callers filter to what the table actually has.
@@ -49,50 +35,6 @@ export async function getTableColumns(projectDb: Sql, tableName: string): Promis
     [tableName.replace(/^public\./, "").replace(/"/g, "")],
   ) as { column_name: string }[];
   return new Set(rows.map((r) => r.column_name));
-}
-
-// Bulk-load a batch of rows via Postgres COPY — dramatically faster than multi-row
-// INSERT. `allowedColumns` are the table's data columns (excluding source_server_id)
-// and must already exist in the table; values absent from a row become NULL. A COPY
-// command is atomic, so a failed batch leaves no partial rows and is safe to retry.
-// Returns a per-batch timing breakdown (open = COPY handshake round-trip, build =
-// encodeCopyValue payload construction, write = stream the payload + COPY completion) so
-// callers can see which third dominates. Diagnostic for the central-side import bottleneck.
-export async function copyInsert(
-  projectDb: Sql,
-  tableName: string,
-  allowedColumns: string[],
-  rows: Record<string, unknown>[],
-  sourceInstanceId: string,
-): Promise<{ openMs: number; buildMs: number; writeMs: number }> {
-  if (rows.length === 0) return { openMs: 0, buildMs: 0, writeMs: 0 };
-  const cols = ["source_server_id", ...allowedColumns];
-
-  const tOpen = performance.now();
-  const writable = await projectDb`COPY ${projectDb(tableName)} (${projectDb(cols)}) FROM STDIN`.writable();
-  const openMs = performance.now() - tOpen;
-
-  const tBuild = performance.now();
-  let payload = "";
-  for (const row of rows) {
-    payload += encodeCopyValue(sourceInstanceId);
-    for (const k of allowedColumns) payload += "\t" + encodeCopyValue(row[k]);
-    payload += "\n";
-  }
-  const buildMs = performance.now() - tBuild;
-
-  const tWrite = performance.now();
-  await new Promise<void>((resolve, reject) => {
-    writable.on("error", reject);
-    writable.on("finish", () => resolve());
-    writable.write(payload, (err: Error | null | undefined) => {
-      if (err) reject(err);
-    });
-    writable.end();
-  });
-  const writeMs = performance.now() - tWrite;
-
-  return { openMs, buildMs, writeMs };
 }
 
 export async function doImport(

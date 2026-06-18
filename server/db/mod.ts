@@ -1,4 +1,4 @@
-export { getPgConnectionFromCacheOrNew, closePgConnection } from "./postgres/mod.ts";
+export { getPgConnectionFromCacheOrNew, createWorkerWriteConnection, closePgConnection } from "./postgres/mod.ts";
 export { dbStartUp, initProjectDb } from "./db_startup.ts";
 export { getResultsObjectTableName, detectHasPeriodId, detectColumnExists, tryCatchDatabaseAsync } from "./utils.ts";
 export type { APIResponseWithData } from "./utils.ts";

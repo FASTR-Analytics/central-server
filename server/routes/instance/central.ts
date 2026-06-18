@@ -1,10 +1,11 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
+import { Readable } from "node:stream";
 import type { Sql } from "postgres";
 import type { GlobalUser, CentralExportPayload } from "lib";
 import { requireHUser } from "../../middleware/auth.ts";
-import { copyInsert, doImport, getTableColumns } from "./import.ts";
-import { getPgConnectionFromCacheOrNew, getResultsObjectTableName } from "../../db/mod.ts";
+import { doImport, getTableColumns } from "./import.ts";
+import { createWorkerWriteConnection, getPgConnectionFromCacheOrNew, getResultsObjectTableName } from "../../db/mod.ts";
 import { _BYPASS_AUTH, _CENTRAL_SERVER_SECRET, _SERVERS_FILE_PATH } from "../../exposed_env_vars.ts";
 import { notifyInstanceProjectsLastUpdated } from "../../task_management/notify_instance_updated.ts";
 import {
@@ -52,123 +53,59 @@ async function retry<T>(label: string, fn: () => Promise<T>, attempts = 3, baseD
   throw lastErr;
 }
 
-// Parse an NDJSON row stream, yielding each {"rows":[...]} batch as it arrives.
-// A terminal {"done"} ends the stream cleanly; an {"error"} line or a stream that
-// closes without a terminal line throws (so the caller's retry kicks in). The reader
-// is owned by the caller, which cancels it in a finally — that also unblocks any
-// in-flight read here on an error path.
-async function* readBatches(
-  reader: ReadableStreamDefaultReader<Uint8Array>,
-): AsyncGenerator<Record<string, unknown>[]> {
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let terminated = false;
-  const parseLine = (line: string): Record<string, unknown>[] | null => {
-    const trimmed = line.trim();
-    if (!trimmed) return null;
-    const msg = JSON.parse(trimmed) as { rows?: Record<string, unknown>[]; done?: boolean; error?: string };
-    if (msg.error) throw new Error(`Source rows stream error: ${msg.error}`);
-    if (msg.done) {
-      terminated = true;
-      return null;
-    }
-    return msg.rows ?? null;
-  };
-
-  while (!terminated) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let nl: number;
-    while (!terminated && (nl = buffer.indexOf("\n")) >= 0) {
-      const line = buffer.slice(0, nl);
-      buffer = buffer.slice(nl + 1);
-      const rows = parseLine(line);
-      if (rows && rows.length > 0) yield rows;
-    }
-  }
-  // Defensive: a final line that wasn't newline-terminated.
-  if (!terminated && buffer.trim()) {
-    try {
-      const rows = parseLine(buffer);
-      if (rows && rows.length > 0) yield rows;
-    } catch {
-      // fall through to the truncated check below
-    }
-  }
-  if (!terminated) {
-    throw new Error("Source rows stream ended without a terminal message (truncated)");
-  }
-}
-
-// Stream one results object's rows from the source and COPY them in. Returns the
-// number of rows inserted.
-//
-// Idempotent by design: it first clears this source's rows from the table, so a
-// retry of the whole call re-imports from scratch instead of duplicating. A
-// one-batch look-ahead downloads the next batch while the current one is being
-// COPY-inserted, so network and DB time overlap instead of running strictly serially.
+// Stream one results object from the source straight into Postgres. The source emits raw
+// COPY TEXT (`COPY (SELECT …) TO STDOUT`) for exactly the columns this table keeps, and we
+// pipe those bytes directly into `COPY … FROM STDIN` — no per-row JS and no (de)compression
+// on either side, so the whole object is one continuous COPY that runs near DB/network
+// speed. Idempotent: it first clears this source's rows, so a retry re-imports cleanly.
+// `db` must be a dedicated no-statement-timeout connection — a single COPY streams for minutes.
 async function streamRowsForResultsObject(
-  projectDb: Sql,
+  db: Sql,
   tableName: string,
-  url: string,
+  sourceServerId: string,
+  sourceProjectId: string,
+  roId: string,
   sourceInstanceId: string,
-  onProgress: (rowsInserted: number) => void,
 ): Promise<number> {
-  await projectDb.unsafe(`DELETE FROM ${tableName} WHERE source_server_id = $1`, [sourceInstanceId]);
+  await db.unsafe(`DELETE FROM ${tableName} WHERE source_server_id = $1`, [sourceInstanceId]);
 
-  // Accept-Encoding: identity → the source skips gzip and we skip gunzip, isolating whether
-  // decompression is part of the central-side bottleneck. Sources are co-located, so raw
-  // NDJSON over the internal hop is cheap. (Diagnostic; revisit once the bottleneck is known.)
-  const res = await fetch(url, { headers: { "X-Central-Secret": _CENTRAL_SERVER_SECRET, "Accept-Encoding": "identity" } });
+  // The table carries only the columns kept at import (redundant period columns dropped).
+  // Ask the source for exactly those, in this order; source_server_id is prepended by the source.
+  const tableCols = await getTableColumns(db, tableName);
+  const dataColumns = [...tableCols].filter((c) => c !== "source_server_id");
+
+  const url = `https://${sourceServerId}.fastr-analytics.org/export_central/${sourceProjectId}/rows`
+    + `?ro_id=${encodeURIComponent(roId)}&cols=${encodeURIComponent(dataColumns.join(","))}`;
+  // Accept-Encoding: identity → the source streams uncompressed COPY TEXT and we skip gunzip
+  // (sources are co-located at ~70 MB/s, and Deno's auto-gunzip is thread-pool-contended).
+  const res = await fetch(url, {
+    headers: { "X-Central-Secret": _CENTRAL_SERVER_SECRET, "Accept-Encoding": "identity" },
+  });
   if (!res.ok || !res.body) {
-    const text = res.ok ? "empty body" : await res.text().catch(() => "");
+    const text = res.ok ? "no body" : await res.text().catch(() => "");
     throw new Error(`Failed to fetch rows (${res.status}): ${text.slice(0, 200)}`);
   }
 
-  // COPY targets the table's actual data columns (looked up once); a key missing
-  // from a row simply becomes NULL.
-  const tableCols = await getTableColumns(projectDb, tableName);
-  const allowedColumns = [...tableCols].filter((c) => c !== "source_server_id");
+  const cols = ["source_server_id", ...dataColumns];
+  const startedAt = performance.now();
+  const writable = await db`COPY ${db(tableName)} (${db(cols)}) FROM STDIN`.writable();
+  await new Promise<void>((resolve, reject) => {
+    // Pipe the response body (raw COPY bytes) into the COPY stream with backpressure.
+    const src = Readable.fromWeb(res.body as unknown as Parameters<typeof Readable.fromWeb>[0]);
+    // A source/network error must destroy the COPY so it rolls back (atomic — no partial rows)
+    // and the connection is freed; the caller's retry then re-clears and re-imports cleanly.
+    src.on("error", (e) => { writable.destroy(e as Error); reject(e); });
+    writable.on("error", reject);
+    writable.on("finish", () => resolve());
+    src.pipe(writable);
+  });
 
-  const reader = res.body.getReader();
-  const gen = readBatches(reader);
-  let nRows = 0;
-  let readMs = 0;
-  let insertMs = 0;
-  let openMs = 0;
-  let buildMs = 0;
-  let writeMs = 0;
-  let pending = gen.next();
-  pending.catch(() => {}); // mark handled so an error path can't raise an unhandled rejection
-  try {
-    while (true) {
-      const t0 = performance.now();
-      const { value, done } = await pending;
-      readMs += performance.now() - t0;
-      if (done) break;
-      pending = gen.next(); // start downloading the next batch while we insert this one
-      pending.catch(() => {});
-      const t1 = performance.now();
-      const timing = await retry(
-        `COPY batch into ${tableName}`,
-        () => copyInsert(projectDb, tableName, allowedColumns, value, sourceInstanceId),
-        3,
-        500,
-      );
-      insertMs += performance.now() - t1;
-      openMs += timing.openMs;
-      buildMs += timing.buildMs;
-      writeMs += timing.writeMs;
-      nRows += value.length;
-      onProgress(nRows);
-    }
-  } finally {
-    await reader.cancel().catch(() => {});
-  }
-
-  console.log(`[import] ${tableName}: ${nRows} rows | read(waited) ${Math.round(readMs)}ms | copy ${Math.round(insertMs)}ms (open ${Math.round(openMs)} build ${Math.round(buildMs)} write ${Math.round(writeMs)})`);
-  return nRows;
+  const [{ count }] = await db.unsafe(
+    `SELECT count(*)::int AS count FROM ${tableName} WHERE source_server_id = $1`,
+    [sourceInstanceId],
+  ) as { count: number }[];
+  console.log(`[import] ${tableName}: ${count} rows in ${Math.round(performance.now() - startedAt)}ms`);
+  return count;
 }
 
 export const routesCentral = new Hono<Env>();
@@ -301,23 +238,26 @@ async function runImportJob(jobId: string) {
 
     const projectDb = getPgConnectionFromCacheOrNew(targetProjectId, "READ_AND_WRITE");
 
-    // Stream each results object: one streaming request that yields NDJSON row
-    // batches, inserted as they arrive (memory stays bounded to one batch). Each
-    // results object is retried independently and re-clears its rows on every
-    // attempt, so a transient blip over a long import can't fail the whole job or
-    // duplicate data.
-    for (let i = 0; i < total; i++) {
-      const ro = exportPayload.resultsObjects[i];
-      const tableName = getResultsObjectTableName(ro.id);
-      const url = `https://${sourceServerId}.fastr-analytics.org/export_central/${sourceProjectId}/rows?ro_id=${encodeURIComponent(ro.id)}`;
-      const roRows = await retry(
-        `fetch rows for ${ro.id}`,
-        () => streamRowsForResultsObject(projectDb, tableName, url, sourceInstanceId, (rowsFetched) => {
-          send({ type: "fetching", roId: ro.id, index: i + 1, total, rowsFetched });
-        }),
-      );
-      nRowsTotal += roRows;
-      send({ type: "inserting", index: i + 1, total });
+    // Stream each results object straight into Postgres via COPY-passthrough: the source
+    // emits raw COPY TEXT and we pipe it into COPY FROM STDIN (no per-row JS either side).
+    // Each object is retried independently and re-clears its rows on every attempt, so a
+    // transient blip can't fail the whole job or duplicate data. A dedicated, no-statement-
+    // timeout connection carries the long-running COPYs.
+    const importDb = createWorkerWriteConnection(targetProjectId);
+    try {
+      for (let i = 0; i < total; i++) {
+        const ro = exportPayload.resultsObjects[i];
+        const tableName = getResultsObjectTableName(ro.id);
+        send({ type: "fetching", roId: ro.id, index: i + 1, total, rowsFetched: 0 });
+        const roRows = await retry(
+          `stream rows for ${ro.id}`,
+          () => streamRowsForResultsObject(importDb, tableName, sourceServerId, sourceProjectId, ro.id, sourceInstanceId),
+        );
+        nRowsTotal += roRows;
+        send({ type: "inserting", index: i + 1, total });
+      }
+    } finally {
+      await importDb.end().catch(() => {});
     }
 
     // Record success only now that every row has actually landed.

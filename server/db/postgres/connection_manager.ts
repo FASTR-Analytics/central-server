@@ -40,6 +40,25 @@ export function getPgConnectionFromCacheOrNew(
   return sql;
 }
 
+// Dedicated connection for bulk `COPY ... FROM STDIN` imports: NO statement_timeout (a
+// single results-object COPY streams for minutes) and prepare:false. Not cached — the
+// caller owns it and must `.end()` it. One writer per import job.
+export function createWorkerWriteConnection(databaseId: string): Sql {
+  return postgres({
+    user: "postgres",
+    hostname: _PG_HOST,
+    password: _PG_PASSWORD,
+    port: Number(_PG_PORT),
+    database: databaseId,
+    max: 2,
+    idle_timeout: 600,
+    connect_timeout: 30,
+    prepare: false,
+    onnotice: () => {},
+    transform: { undefined: null },
+  });
+}
+
 export async function closePgConnection(
   id: string,
   permissions?: "READ_ONLY" | "READ_AND_WRITE",

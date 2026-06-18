@@ -1,1 +1,1 @@
-export { getPgConnectionFromCacheOrNew, closePgConnection } from "./connection_manager.ts";
+export { getPgConnectionFromCacheOrNew, createWorkerWriteConnection, closePgConnection } from "./connection_manager.ts";
